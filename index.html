@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAV Analytics | Logic</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            /* PALETA HARMONIA (Zinc) */
+            --bg-body: #0f1115;
+            --bg-sidebar: #16181d;
+            --bg-panel: #1e2026;
+            --bg-hover: #272a33;
+            --border: #2d313a;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+
+            /* CORES NEON/GLASS */
+            --cell-good-bg: rgba(34, 197, 94, 0.25); 
+            --cell-good-text: #4ade80; 
+            
+            --cell-bad-bg: rgba(239, 68, 68, 0.25);
+            --cell-bad-text: #f87171; 
+            
+            --punc-good: #10b981;
+            --punc-warn: #f59e0b;
+            --punc-bad: #ef4444;
+        }
+
+        * { box-sizing: border-box; outline: none; -webkit-font-smoothing: antialiased; }
+        
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: var(--bg-body); 
+            color: var(--text-main); 
+            margin: 0; display: flex; height: 100vh; overflow: hidden; 
+            font-size: 13px;
+        }
+        
+        /* SCROLLBAR */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        #loading-overlay { position: absolute; inset: 0; background: var(--bg-body); z-index: 2000; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 15px;}
+        .spinner { width: 30px; height: 30px; border: 2px solid #333; border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; }
+        .loading-text { color: var(--text-muted); font-size: 0.8rem; animation: pulse 1.5s infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+
+        /* --- SIDEBAR --- */
+        .sidebar { 
+            width: 14px; 
+            background-color: var(--bg-body); 
+            border-right: 1px solid transparent; 
+            display: flex; flex-direction: column; 
+            padding: 20px 0; flex-shrink: 0;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.3s;
+            overflow: hidden; z-index: 100; position: relative;
+        }
+        .sidebar-handle {
+            position: absolute; top: 0; bottom: 0; left: 0; width: 4px;
+            background: linear-gradient(to bottom, transparent, var(--accent), transparent);
+            opacity: 0.6; transition: 0.3s;
+        }
+        .sidebar:hover { 
+            width: 240px; background-color: var(--bg-sidebar); 
+            border-right: 1px solid var(--border);
+            box-shadow: 10px 0 50px rgba(0,0,0,0.8); padding: 20px 10px; 
+        }
+        .sidebar:hover .sidebar-handle { opacity: 0; }
+        .sidebar-content { opacity: 0; transition: opacity 0.2s; pointer-events: none; width: 220px; }
+        .sidebar:hover .sidebar-content { opacity: 1; pointer-events: all; transition-delay: 0.1s; }
+
+        .logo { 
+            height: 40px; display: flex; align-items: center; padding-left: 5px; margin-bottom: 20px;
+            color: #fff; font-weight: 800; font-size: 0.95rem; white-space: nowrap;
+        }
+        .logo i { min-width: 24px; color: var(--accent); margin-right: 15px; }
+        .menu-label { font-size: 0.65rem; color: #555; text-transform: uppercase; font-weight: 700; margin: 10px 0 5px 10px; white-space: nowrap; }
+        .nav-item { 
+            background: transparent; border: none; color: var(--text-muted); 
+            padding: 10px 10px; width: 100%; text-align: left; border-radius: 8px; 
+            cursor: pointer; transition: background 0.2s; font-size: 0.85rem; font-weight: 500; 
+            display: flex; align-items: center; margin-bottom: 2px; white-space: nowrap;
+        }
+        .nav-item:hover { background: var(--bg-hover); color: white; }
+        .nav-item.active { background: rgba(59, 130, 246, 0.15); color: var(--accent); }
+        .nav-item i { min-width: 20px; margin-right: 12px; display: flex; justify-content: center; }
+
+        /* --- MAIN --- */
+        .main { flex: 1; display: flex; flex-direction: column; position: relative; z-index: 1; }
+        .top-bar { padding: 12px 25px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: var(--bg-body); }
+        .year-tabs { display: flex; gap: 4px; background: var(--bg-sidebar); padding: 4px; border-radius: 8px; border: 1px solid var(--border); }
+        .year-tab { background: transparent; border: none; color: var(--text-muted); padding: 6px 20px; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .year-tab:hover { color: white; }
+        .year-tab.active { background: var(--bg-hover); color: white; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+
+        /* --- TABLE --- */
+        .table-wrapper { flex: 1; overflow: auto; position: relative; padding-right: 0; }
+        table { border-collapse: separate; border-spacing: 0; width: 100%; }
+        
+        th { 
+            background: var(--bg-body); color: var(--text-muted); font-size: 0.7rem; 
+            text-transform: uppercase; font-weight: 700; padding: 12px 5px; 
+            position: sticky; top: 0; z-index: 30; vertical-align: middle;
+            border-bottom: 1px solid var(--border); border-right: 1px solid var(--border);
+        }
+        
+        .sticky-col { position: sticky; z-index: 35; background: var(--bg-sidebar); border-right: 1px solid var(--border); }
+        
+        .col-name { 
+            left: 0; width: 210px; min-width: 210px; max-width: 210px;
+            text-align: left; padding: 10px 15px; 
+            white-space: normal; line-height: 1.3; font-size: 0.8rem; color: #fff;
+        }
+        
+        .col-meta { 
+            left: 210px; width: 60px; min-width: 60px; 
+            text-align: center; border-right: 2px solid var(--border); 
+            color: var(--accent); font-weight: 700; vertical-align: middle;
+        }
+        th.col-name, th.col-meta { z-index: 40; background: var(--bg-body); }
+        
+        td { 
+            padding: 12px 4px; font-size: 0.8rem; border-bottom: 1px solid var(--border); border-right: 1px solid var(--border); 
+            text-align: center; cursor: pointer; transition: background 0.15s; 
+            position: relative; color: var(--text-muted); vertical-align: middle;
+        }
+        tr:hover td:not(.sticky-col) { background-color: var(--bg-hover); color: white; }
+        tr:hover .sticky-col { background-color: var(--bg-hover); color: white; }
+
+        .good { background-color: var(--cell-good-bg); color: var(--cell-good-text); font-weight: 700; }
+        .bad { background-color: var(--cell-bad-bg); color: var(--cell-bad-text); font-weight: 700; }
+        .trend-arrow { font-size: 0.6rem; position: absolute; right: 2px; bottom: 2px; opacity: 0.8; }
+        
+        .sector-row td { 
+            background: #232730; color: #fff; font-weight: 700; text-transform: uppercase; 
+            font-size: 0.7rem; padding: 8px 15px; text-align: left; letter-spacing: 1px; 
+            position: sticky; left: 0; z-index: 34; border-top: 1px solid var(--border);
+        }
+
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        tbody tr { animation: fadeUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        .fab { position: fixed; bottom: 35px; right: 35px; width: 52px; height: 52px; border-radius: 14px; background: var(--accent); color: white; border: none; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.4); cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s; z-index: 90; }
+        .fab:hover { transform: scale(1.05); background: var(--accent-hover); }
+
+        /* MODAL */
+        .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 1000; display: none; align-items: center; justify-content: center; backdrop-filter: blur(8px); opacity: 0; transition: opacity 0.3s ease; }
+        .modal-overlay.open { display: flex; opacity: 1; }
+        @keyframes modalPop { 0% { opacity: 0; transform: scale(0.9) translateY(20px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+        .modal-box { background: #18181b; width: 800px; max-width: 95%; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 25px 80px rgba(0,0,0,0.7); display: flex; flex-direction: column; overflow: hidden; animation: modalPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .modal-header { padding: 20px 30px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: #1f2126; }
+        .modal-title { font-size: 1.1rem; font-weight: 700; color: white; }
+        .modal-body { padding: 30px; max-height: 75vh; overflow-y: auto; }
+
+        /* STATS (5 COLUNAS) */
+        .stats-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 25px; }
+        .stat-card { 
+            background: var(--bg-body); border: 1px solid var(--border); 
+            padding: 12px 5px; border-radius: 10px; text-align: center; 
+            display: flex; flex-direction: column; justify-content: center;
+        }
+        .stat-val { font-size: 1.2rem; font-weight: 700; color: white; margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .stat-label { font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600; letter-spacing: 0.5px; }
+        
+        /* LOGIC BADGE (NOVIDADE) */
+        .logic-badge {
+            font-size: 0.6rem; color: #666; margin-top: 4px; 
+            background: rgba(255,255,255,0.05); padding: 2px 6px; 
+            border-radius: 4px; display: inline-block; align-self: center;
+        }
+
+        .status-badge { display: flex; align-items: center; gap: 8px; padding: 6px 14px; background: var(--bg-panel); border-radius: 20px; border: 1px solid var(--border); font-size: 0.75rem; font-weight: 600; color: var(--text-muted); }
+        .status-dot { width: 8px; height: 8px; border-radius: 2px; }
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 25px; }
+        .full-width { grid-column: span 2; }
+        .input-group label { display: block; color: var(--text-muted); font-size: 0.75rem; margin-bottom: 8px; font-weight: 600; text-transform: uppercase; }
+        .input-ui { width: 100%; padding: 12px; background: var(--bg-body); border: 1px solid var(--border); color: white; border-radius: 8px; font-family: inherit; font-size: 0.9rem; transition: all 0.2s; }
+        .input-ui:focus { border-color: var(--accent); }
+        .month-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border); }
+        .month-item { display: flex; flex-direction: column; gap: 5px; padding: 10px; background: var(--bg-body); border-radius: 8px; border: 1px solid var(--border); height: 75px; justify-content: space-between; }
+        .month-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; display: flex; justify-content: space-between; align-items: center; }
+        .month-input-val { width: 100%; padding: 4px; background: transparent; border: none; border-bottom: 1px solid var(--border); color: white; text-align: center; font-size: 0.9rem; font-weight: 500; }
+        .month-input-val:focus { border-bottom-color: var(--accent); }
+        .date-mini { font-size: 0.65rem; padding: 2px; background: transparent; border: none; color: #555; width: 100%; text-align: right; cursor: pointer; }
+        .date-mini.late { color: var(--punc-bad); }
+        .date-mini.ontime { color: var(--punc-good); }
+        input[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.4); cursor: pointer; transform: scale(0.8); }
+        .modal-footer { padding: 20px 30px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; background: #1f2126; }
+        .btn { padding: 10px 20px; border-radius: 8px; font-weight: 600; cursor: pointer; border: none; font-size: 0.9rem; display: flex; align-items: center; gap: 8px; transition: 0.2s; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-ghost { background: transparent; color: var(--text-muted); }
+        .btn-ghost:hover { color: white; background: var(--bg-hover); }
+        .btn-danger { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+        .sector-wrapper { display: flex; gap: 10px; }
+        .btn-icon { padding: 0 12px; background: var(--bg-body); border: 1px solid var(--border); color: white; border-radius: 8px; cursor: pointer; display: flex; align-items: center; }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #10b981; color: #064e3b; padding: 12px 30px; border-radius: 30px; font-weight: 700; box-shadow: 0 10px 40px rgba(16, 185, 129, 0.4); transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); z-index: 2000; display: flex; align-items: center; gap: 8px; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); text-align: center; }
+        .btn-import { margin-top: 20px; background: var(--accent); color: white; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2); transition: 0.2s; }
+        .timeline-wrapper { position: relative; padding: 20px 0 10px 0; margin-top: 20px; border-top: 1px solid var(--border); }
+        .timeline-title { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700; margin-bottom: 20px; letter-spacing: 0.5px; }
+        .timeline-track { position: relative; display: flex; justify-content: space-between; align-items: center; }
+        .timeline-line { position: absolute; left: 0; right: 0; top: 6px; height: 2px; background: var(--border); z-index: 0; }
+        .timeline-item { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; cursor: pointer; width: 30px; }
+        .timeline-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--bg-panel); border: 2px solid var(--border); transition: all 0.2s ease; }
+        .timeline-dot:hover { transform: scale(1.2); border-color: white; }
+        .timeline-dot.ok { background: var(--punc-good); border-color: var(--punc-good); box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2); }
+        .timeline-dot.late { background: var(--punc-bad); border-color: var(--punc-bad); box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2); }
+        .timeline-dot.empty { background: var(--bg-hover); border-color: var(--border); }
+        .timeline-label { margin-top: 8px; font-size: 0.6rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; }
+        .meta-history-btn { margin-left: 10px; color: #71717a; cursor: pointer; transition: 0.2s; }
+        .meta-history-btn:hover { color: var(--accent); }
+        .meta-history-container { display: none; background: #1a1a1d; padding: 10px; border-radius: 8px; border: 1px solid #333; margin-top: 5px; max-height: 100px; overflow-y: auto; }
+        .meta-history-item { font-size: 0.8rem; color: #aaa; padding: 4px 0; border-bottom: 1px solid #27272a; display: flex; justify-content: space-between; }
+        .meta-history-item:last-child { border-bottom: none; }
+        .badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 4px; font-weight: 700; }
+        .badge-good { color: var(--punc-good); background: rgba(16, 185, 129, 0.1); }
+        .badge-warn { color: var(--punc-warn); background: rgba(245, 158, 11, 0.1); }
+        .badge-bad { color: var(--punc-bad); background: rgba(239, 68, 68, 0.1); }
+    </style>
+</head>
+<body>
+
+    <script>
+        const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec"; 
+    </script>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Conectando...</div>
+    </div>
+
+    <div class="sidebar">
+        <div class="sidebar-handle"></div>
+
+        <div class="sidebar-content">
+            <div class="logo">
+                <i data-lucide="database-zap"></i> 
+                <span>FAV ANALYTICS</span>
+            </div>
+            <div class="menu-label">Setores</div>
+            <div id="sidebar-menu"></div>
+        </div>
+    </div>
+
+    <div class="main">
+        <div class="top-bar">
+            <div style="display:flex; align-items:center; gap:15px">
+                <h2 style="margin:0; font-size:1.1rem; font-weight:700; color:var(--text-main); letter-spacing:-0.5px" ondblclick="changeDeadlineConfig()" title="Configurar Prazo">Monitoramento <span id="year-label" style="color:var(--accent)">2025</span></h2>
+            </div>
+
+            <div class="year-tabs">
+                <button class="year-tab active" id="tab-2025" onclick="setYear('2025')">2025</button>
+                <button class="year-tab" id="tab-2026" onclick="setYear('2026')">2026</button>
+            </div>
+
+            <div style="display:flex; gap:10px;">
+                <div class="status-badge"><div class="status-dot" style="background:var(--cell-good-text)"></div> Meta Batida</div>
+                <div class="status-badge"><div class="status-dot" style="background:var(--cell-bad-text)"></div> Atenção</div>
+            </div>
+        </div>
+
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="sticky-col col-name">Indicador</th>
+                        <th class="sticky-col col-meta">Meta</th>
+                        <th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th>
+                        <th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th>
+                    </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+            </table>
+            
+            <div id="empty-state" class="empty-state" style="display:none">
+                <div style="font-size:3rem; margin-bottom:15px; opacity:0.3">📂</div>
+                <div style="font-size:1.2rem; font-weight:600; margin-bottom:5px">Sem dados em <span id="empty-year">2026</span></div>
+                <button class="btn-import" onclick="importFrom2025()">
+                    <i data-lucide="copy-plus"></i> Importar de 2025
+                </button>
+            </div>
+        </div>
+        
+        <button class="fab" onclick="openCreateModal()" title="Novo Indicador"><i data-lucide="plus" size="24"></i></button>
+    </div>
+
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal-box">
+            <div class="modal-header">
+                <span class="modal-title" id="modalTitle">Detalhes</span>
+                <button onclick="closeModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer"><i data-lucide="x"></i></button>
+            </div>
+            
+            <div class="modal-body">
+                <div id="viewMode">
+                    <div class="stats-row">
+                        <div class="stat-card">
+                            <div class="stat-val" id="viewMetaDisplay" style="color:var(--accent)">-</div>
+                            <div class="stat-label">Meta Alvo</div>
+                            <div id="viewLogicBadge" class="logic-badge">-</div>
+                        </div>
+
+                        <div class="stat-card"><div class="stat-val" id="viewLast">-</div><div class="stat-label">Último</div></div>
+                        <div class="stat-card"><div class="stat-val" id="viewAvg">-</div><div class="stat-label">Média</div></div>
+                        <div class="stat-card"><div class="stat-val" id="viewTarget" style="color:var(--cell-good-text)">-</div><div class="stat-label">Batida %</div></div>
+                        <div class="stat-card" style="border-color:var(--border)">
+                            <div class="stat-val" id="viewPunc" style="font-size:1.2rem">-</div>
+                            <div class="stat-label">Pontualidade</div>
+                            <div id="puncBadge" style="margin-top:5px; font-size:0.7rem"></div>
+                        </div>
+                    </div>
+                    <div style="height: 180px; width: 100%; margin-bottom:15px"><canvas id="detailsChart"></canvas></div>
+                    
+                    <div class="timeline-wrapper">
+                         <div class="timeline-title">Histórico de Entregas</div>
+                         <div class="timeline-track">
+                             <div class="timeline-line"></div>
+                             <div id="deliveryTimeline" style="display:contents"></div>
+                         </div>
+                    </div>
+                </div>
+
+                <div id="editMode" style="display:none;">
+                    <input type="hidden" id="inp-id">
+                    <div class="form-grid">
+                        <div class="input-group full-width">
+                            <label>Nome</label>
+                            <input type="text" id="inp-name" class="input-ui">
+                        </div>
+                        <div class="input-group">
+                            <label>Setor</label>
+                            <div class="sector-wrapper">
+                                <select id="inp-sector" class="input-ui"></select>
+                                <button class="btn-icon" onclick="toggleNewSector()" title="Novo"><i data-lucide="plus" size="14"></i></button>
+                            </div>
+                            <input type="text" id="inp-new-sector" class="input-ui" style="display:none; margin-top:5px" placeholder="Nome...">
+                        </div>
+                        <div class="input-group">
+                            <label>Lógica</label>
+                            <select id="inp-logic" class="input-ui">
+                                <option value="maior">Maior é Melhor (↑)</option>
+                                <option value="menor">Menor é Melhor (↓)</option>
+                            </select>
+                        </div>
+                        <div class="input-group">
+                            <label style="display:flex; align-items:center">
+                                Meta 
+                                <span class="meta-history-btn" onclick="toggleMetaHistory()" title="Histórico"><i data-lucide="history" size="12"></i></span>
+                            </label>
+                            <input type="text" id="inp-meta" class="input-ui">
+                            <div id="meta-history-container" class="meta-history-container"></div>
+                        </div>
+                        <div class="input-group">
+                            <label>Formato</label>
+                            <select id="inp-format" class="input-ui">
+                                <option value="number">Numérico (1.000)</option>
+                                <option value="percent">Porcentagem (%)</option>
+                                <option value="time">Tempo (00:00)</option>
+                            </select>
+                        </div>
+                        <div class="input-group" id="year-selector-group" style="display:none">
+                            <label>Ano</label>
+                            <select id="inp-year" class="input-ui">
+                                <option value="2025">2025 (+ 2026)</option>
+                                <option value="2026">2026 (Apenas)</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label id="lbl-monthly-values">Valores Mensais</label>
+                        <div class="month-grid" id="monthInputsContainer"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <div id="viewFooter" style="display:flex; width:100%; justify-content:flex-end; gap:10px">
+                    <button class="btn btn-ghost" onclick="switchToEdit()"><i data-lucide="pencil" size="14"></i> Editar</button>
+                    <button class="btn btn-primary" onclick="closeModal()">Fechar</button>
+                </div>
+                <div id="editFooter" style="display:none; width:100%; justify-content:space-between;">
+                    <button class="btn btn-danger" id="btn-delete" onclick="deleteMetric()">Excluir</button>
+                    <div style="display:flex; gap:10px">
+                        <button class="btn btn-ghost" onclick="switchToView()">Cancelar</button>
+                        <button class="btn btn-primary" onclick="saveMetric()">Salvar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"><i data-lucide="check-circle"></i> <span>Salvo!</span></div>
+
+    <script>
+        lucide.createIcons();
+        const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+        let fullDB = { "2025": [], "2026": [] };
+        let isNewSectorMode = false;
+        let chartInstance = null;
+        let currentMetricId = null;
+        let CURRENT_YEAR = '2025';
+        let DEADLINE_DAY = parseInt(localStorage.getItem('fav_deadline')) || 15;
+
+        const iconMap = {
+            "Atendimento": "users", "Centro Cirúrgico": "scissors", "TI": "monitor", "DGG": "building",
+            "SCIH": "shield-alert", "POA": "file-bar-chart", "Comunicação": "megaphone", "Hotelaria": "bed",
+            "Manutenção": "wrench", "Farmácia": "pill", "Laboratório": "flask-conical",
+            "Engenharia Clínica": "activity", "Horários Médicos": "clock", "Marcação": "calendar-check", "Projetos Externos": "globe"
+        };
+
+        window.onload = () => { loadFromDrive(); };
+
+        function setYear(year) {
+            CURRENT_YEAR = year;
+            document.getElementById('year-label').innerText = year;
+            document.querySelectorAll('.year-tab').forEach(b => b.classList.remove('active'));
+            document.getElementById(`tab-${year}`).classList.add('active');
+            renderApp(document.querySelector('.nav-item.active') ? document.querySelector('.nav-item.active').innerText.trim() : 'Todos');
+        }
+
+        function importFrom2025() {
+            if(confirm("Copiar estrutura de 2025 para 2026?")) {
+                const baseData = fullDB['2025'];
+                const newData = baseData.map(item => ({
+                    id: Date.now() + Math.random(), 
+                    sector: item.sector, name: item.name, logic: item.logic, meta: item.meta, format: item.format,
+                    data: Array(12).fill(null), dates: Array(12).fill(null), meta_history: []
+                }));
+                fullDB['2026'] = newData;
+                saveToDrive(); renderApp();
+            }
+        }
+
+        function getDataForCurrentYear() { return fullDB[CURRENT_YEAR] || []; }
+
+        async function loadFromDrive() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+            try {
+                const res = await fetch(API_URL);
+                const data = await res.json();
+                fullDB = Array.isArray(data) ? { "2025": data, "2026": [] } : data;
+                if(!fullDB["2025"]) fullDB["2025"] = [];
+                if(!fullDB["2026"]) fullDB["2026"] = [];
+                renderApp();
+            } catch (err) { alert("Erro de conexão."); } 
+            finally { document.getElementById('loading-overlay').style.display = 'none'; }
+        }
+
+        async function saveToDrive() {
+            showToast("Salvando...");
+            try { await fetch(API_URL, { method: 'POST', body: JSON.stringify(fullDB) }); showToast("Sincronizado!"); }
+            catch (err) { showToast("Erro ao salvar!"); }
+        }
+
+        function renderApp(filter = 'Todos') {
+            updateSidebar(filter);
+            renderTable(filter);
+        }
+
+        function updateSidebar(activeFilter) {
+            const currentData = getDataForCurrentYear();
+            const menu = document.getElementById('sidebar-menu');
+            const uniqueSectors = currentData.length > 0 ? [...new Set(currentData.map(i => i.sector))].sort() : [];
+            let html = `<button class="nav-item ${activeFilter === 'Todos' ? 'active' : ''}" onclick="renderApp('Todos')"><i data-lucide="layout-grid" size="16"></i> <span>Todos</span></button>`;
+            uniqueSectors.forEach(sec => {
+                const icon = iconMap[sec] || "folder";
+                html += `<button class="nav-item ${activeFilter === sec ? 'active' : ''}" onclick="renderApp('${sec}')"><i data-lucide="${icon}" size="16"></i> <span>${sec}</span></button>`;
+            });
+            menu.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        function renderTable(filter) {
+            const tbody = document.getElementById('table-body');
+            const emptyState = document.getElementById('empty-state');
+            const tableElement = document.querySelector('table');
+            tbody.innerHTML = '';
+            
+            const currentData = getDataForCurrentYear();
+            if(currentData.length === 0) {
+                tableElement.style.display = 'none'; emptyState.style.display = 'flex';
+                document.getElementById('empty-year').innerText = CURRENT_YEAR;
+                if(CURRENT_YEAR === '2026' && fullDB['2025'].length > 0) document.querySelector('.btn-import').style.display = 'flex';
+                else document.querySelector('.btn-import').style.display = 'none';
+                return;
+            } else { tableElement.style.display = 'table'; emptyState.style.display = 'none'; }
+
+            const sectors = filter === 'Todos' ? [...new Set(currentData.map(i => i.sector))].sort() : [filter];
+
+            sectors.forEach(sec => {
+                const items = currentData.filter(i => i.sector === sec);
+                if(items.length === 0) return;
+                const header = document.createElement('tr');
+                header.className = 'sector-row';
+                header.innerHTML = `<td colspan="14">${sec}</td>`;
+                tbody.appendChild(header);
+
+                items.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.onclick = () => openDetails(item.id);
+                    let html = `<td class="sticky-col col-name" title="${item.name}">${item.name}</td>`;
+                    html += `<td class="sticky-col col-meta">${formatVal(item.meta, item.format)}</td>`;
+                    for(let i=0; i<12; i++) {
+                        const val = item.data[i];
+                        const cls = getStatus(val, item.meta, item.logic, item.format);
+                        let arrow = "";
+                        if(item.format !== 'time' && i > 0 && item.data[i] !== null && item.data[i-1] !== null) {
+                            const diff = item.data[i] - item.data[i-1];
+                            if(diff > 0) arrow = "▲"; else if(diff < 0) arrow = "▼";
+                        }
+                        html += `<td class="${cls}">${formatVal(val, item.format)}<span class="trend-arrow">${arrow}</span></td>`;
+                    }
+                    tr.innerHTML = html;
+                    tbody.appendChild(tr);
+                });
+            });
+        }
+
+        function openDetails(id) {
+            currentMetricId = id;
+            const item = getDataForCurrentYear().find(i => i.id === id);
+            if(!item) return;
+
+            document.getElementById('modalTitle').innerText = `${item.name}`;
+            
+            // POPULA A META E O BADGE DE LÓGICA
+            document.getElementById('viewMetaDisplay').innerText = formatVal(item.meta, item.format);
+            const logicText = item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓';
+            document.getElementById('viewLogicBadge').innerText = logicText;
+
+            const valid = item.data.filter(v => v !== null && v !== "");
+            
+            if(valid.length > 0) {
+                const last = valid[valid.length - 1];
+                let hits = 0;
+                valid.forEach(v => { if(getStatus(v, item.meta, item.logic, item.format) === 'good') hits++; });
+                
+                document.getElementById('viewLast').innerText = formatVal(last, item.format);
+                if(item.format === 'time') document.getElementById('viewAvg').innerText = "-";
+                else {
+                    const avg = valid.reduce((a,b)=>a+parseFloat(b),0)/valid.length;
+                    document.getElementById('viewAvg').innerText = formatVal(avg, item.format);
+                }
+                document.getElementById('viewTarget').innerText = Math.round((hits/valid.length)*100) + '%';
+            } else {
+                document.getElementById('viewLast').innerText = "-";
+                document.getElementById('viewAvg').innerText = "-";
+                document.getElementById('viewTarget').innerText = "-";
+            }
+
+            const dates = item.dates || Array(12).fill(null);
+            let onTimeCount = 0; let totalDeliveries = 0; let timelineHTML = "";
+
+            dates.forEach((dateStr, idx) => {
+                const monthName = months[idx].substring(0,3);
+                let statusClass = "empty"; let tooltip = "Pendente";
+                if(item.data[idx] !== null && item.data[idx] !== "") {
+                    totalDeliveries++;
+                    if(dateStr) {
+                        const day = parseInt(dateStr.split('-')[2]); 
+                        if(day <= DEADLINE_DAY) { onTimeCount++; statusClass = "ok"; tooltip = `No prazo: ${dateStr}`; } 
+                        else { statusClass = "late"; tooltip = `Atrasado: ${dateStr}`; }
+                    } else { statusClass = "empty"; tooltip = "Sem data de entrega"; }
+                }
+                timelineHTML += `<div class="timeline-item" title="${tooltip}"><div class="timeline-dot ${statusClass}"></div><div class="timeline-label">${monthName}</div></div>`;
+            });
+            document.getElementById('deliveryTimeline').innerHTML = timelineHTML;
+            
+            const puncRate = totalDeliveries > 0 ? Math.round((onTimeCount / totalDeliveries) * 100) : 0;
+            document.getElementById('viewPunc').innerText = puncRate + "%";
+            const badgeEl = document.getElementById('puncBadge');
+            if(totalDeliveries === 0) badgeEl.innerHTML = '<span class="badge badge-warn">Sem dados</span>';
+            else if(puncRate === 100) badgeEl.innerHTML = '<span class="badge badge-good">Impecável</span>';
+            else if(puncRate >= 70) badgeEl.innerHTML = '<span class="badge badge-warn">Atenção</span>';
+            else badgeEl.innerHTML = '<span class="badge badge-bad">Crítico</span>';
+
+            renderChart(item, item.data);
+            switchToView();
+            document.getElementById('modalOverlay').classList.add('open');
+        }
+
+        // ... [FUNÇÕES MODAIS E DE SALVAMENTO] ...
+        function openCreateModal() { currentMetricId = null; document.getElementById('modalOverlay').classList.add('open'); switchToEdit(true); }
+        function switchToView() { document.getElementById('viewMode').style.display = 'block'; document.getElementById('viewFooter').style.display = 'flex'; document.getElementById('editMode').style.display = 'none'; document.getElementById('editFooter').style.display = 'none'; const item = getDataForCurrentYear().find(i => i.id === currentMetricId); if(item) document.getElementById('modalTitle').innerText = `${item.name}`; }
+        function switchToEdit(isNew = false) { document.getElementById('viewMode').style.display = 'none'; document.getElementById('viewFooter').style.display = 'none'; document.getElementById('editMode').style.display = 'block'; document.getElementById('editFooter').style.display = 'flex'; const inputs = document.getElementById('monthInputsContainer'); inputs.innerHTML = ''; populateSectorSelect(); isNewSectorMode = false; document.getElementById('inp-sector').style.display = 'block'; document.getElementById('inp-new-sector').style.display = 'none'; document.getElementById('meta-history-container').style.display = 'none'; document.getElementById('lbl-monthly-values').innerText = `Valores (${CURRENT_YEAR})`; const yearGroup = document.getElementById('year-selector-group'); if(isNew) { document.getElementById('modalTitle').innerText = `Novo Indicador`; yearGroup.style.display = 'block'; document.getElementById('inp-year').value = CURRENT_YEAR; document.getElementById('inp-id').value = ""; document.getElementById('inp-name').value = ""; document.getElementById('inp-meta').value = ""; document.getElementById('btn-delete').style.display = 'none'; months.forEach((m, i) => inputs.innerHTML += createMonthInput(i, m, '', '')); } else { yearGroup.style.display = 'none'; const item = getDataForCurrentYear().find(i => i.id === currentMetricId); document.getElementById('modalTitle').innerText = "Editar"; document.getElementById('inp-id').value = item.id; document.getElementById('inp-name').value = item.name; document.getElementById('inp-sector').value = item.sector; document.getElementById('inp-logic').value = item.logic; document.getElementById('inp-meta').value = item.meta; document.getElementById('inp-format').value = item.format; document.getElementById('btn-delete').style.display = 'block'; const dates = item.dates || Array(12).fill(null); months.forEach((m, i) => inputs.innerHTML += createMonthInput(i, m, item.data[i], dates[i])); renderMetaHistory(item.meta_history); } }
+        
+        function createMonthInput(i, m, val, dateVal) { 
+            const v = val !== null && val !== undefined ? val : ''; const d = dateVal || ''; 
+            let borderClass = ""; if(d) { const day = parseInt(d.split('-')[2]); borderClass = day > DEADLINE_DAY ? "late" : "ontime"; } 
+            return `<div class="month-item"><div class="month-label"><span>${m}</span>${d ? (borderClass==='late'?'<span style="color:var(--punc-bad)">⏱️</span>':'<span style="color:var(--punc-good)">✓</span>') : ''}</div><input type="text" id="m-${i}" class="month-input-val" value="${v}" placeholder="-"><input type="date" id="d-${i}" class="date-mini ${borderClass}" value="${d}"></div>`; 
+        }
+        
+        function saveMetric() { const id = document.getElementById('inp-id').value; const name = document.getElementById('inp-name').value; let sector = isNewSectorMode ? document.getElementById('inp-new-sector').value : document.getElementById('inp-sector').value; const logic = document.getElementById('inp-logic').value; const fmt = document.getElementById('inp-format').value; const chosenYear = document.getElementById('inp-year').value; const rawMeta = document.getElementById('inp-meta').value; let meta = rawMeta; if(fmt !== 'time' && rawMeta !== "") { meta = parseFloat(rawMeta); if(isNaN(meta)) meta = 0; } if(!name || !sector) { alert("Preencha Nome e Setor."); return; } const dataArr = []; const datesArr = []; for(let i=0; i<12; i++) { const val = document.getElementById(`m-${i}`).value; const date = document.getElementById(`d-${i}`).value; if(fmt === 'time') dataArr.push(val === "" ? null : val); else dataArr.push(val === "" ? null : parseFloat(val)); datesArr.push(date === "" ? null : date); } let history = []; if(id) { const oldItem = fullDB[CURRENT_YEAR].find(i => i.id == parseInt(id)); if(oldItem) { history = oldItem.meta_history || []; if(oldItem.meta != meta) history.push({ date: new Date().toLocaleDateString('pt-BR'), value: oldItem.meta }); } } const createObj = (d, dt, hist) => ({ id: id ? parseInt(id) : Date.now() + Math.random(), name, sector, logic, meta: meta, format: fmt, data: d, dates: dt, meta_history: hist || [] }); if(id) { const idx = fullDB[CURRENT_YEAR].findIndex(i => i.id == parseInt(id)); if(idx !== -1) fullDB[CURRENT_YEAR][idx] = createObj(dataArr, datesArr, history); currentMetricId = fullDB[CURRENT_YEAR][idx].id; openDetails(currentMetricId); } else { if(chosenYear === '2025') { fullDB['2025'].push(createObj(dataArr, datesArr, [])); fullDB['2026'].push(createObj(Array(12).fill(null), Array(12).fill(null), [])); } else { fullDB['2026'].push(createObj(dataArr, datesArr, [])); } closeModal(); } if(!id && CURRENT_YEAR !== chosenYear) setYear(chosenYear); else renderApp('Todos'); saveToDrive(); }
+        function timeToDecimal(t) { if(!t || typeof t !== 'string' || !t.includes(':')) return 0; const parts = t.split(':'); return parseFloat(parts[0]) + (parseFloat(parts[1])/60); }
+        function renderChart(item, dataArr) { const ctx = document.getElementById('detailsChart').getContext('2d'); if(chartInstance) chartInstance.destroy(); const cData = dataArr.map(v => { if(item.format === 'time') return timeToDecimal(v); if(item.format === 'percent' && Math.abs(v)<=1 && v!==0) return v*100; return v; }); let cMeta = item.meta; if(item.format === 'time') cMeta = timeToDecimal(item.meta); else if(item.format === 'percent' && Math.abs(item.meta)<=1 && item.meta!==0) cMeta = item.meta * 100; const gradient = ctx.createLinearGradient(0, 0, 0, 180); gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)'); gradient.addColorStop(1, 'rgba(59, 130, 246, 0)'); chartInstance = new Chart(ctx, { type: 'line', data: { labels: months, datasets: [ { label: 'Real', data: cData, borderColor: '#3b82f6', backgroundColor: gradient, borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 }, { label: 'Meta', data: Array(12).fill(cMeta), borderColor: '#ef4444', borderWidth: 2, borderDash: [4,4], pointRadius: 0 } ] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: '#27272a' }, ticks: { color: '#555', font: {size: 10} } }, x: { grid: { display: false }, ticks: { color: '#555', font: {size: 10} } } }, plugins: { legend: { display: false } } } }); }
+        function populateSectorSelect() { const sel = document.getElementById('inp-sector'); const unique = [...new Set(getDataForCurrentYear().map(i => i.sector))].sort(); sel.innerHTML = ''; if(unique.length === 0) sel.innerHTML = '<option value="Geral">Geral</option>'; unique.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`); }
+        function toggleNewSector() { isNewSectorMode = !isNewSectorMode; document.getElementById('inp-sector').style.display = isNewSectorMode ? 'none' : 'block'; document.getElementById('inp-new-sector').style.display = isNewSectorMode ? 'block' : 'none'; }
+        function renderMetaHistory(history) { const c = document.getElementById('meta-history-container'); if(!history || !history.length) { c.innerHTML = '<div style="font-size:0.7rem; color:#555; padding:5px">Sem histórico</div>'; return; } let h=''; history.forEach(x=>h+=`<div class="meta-history-item"><span>${x.date}</span><span>${x.value}</span></div>`); c.innerHTML=h; }
+        function toggleMetaHistory() { const el = document.getElementById('meta-history-container'); el.style.display = el.style.display === 'block' ? 'none' : 'block'; }
+        function deleteMetric() { if(confirm("Excluir?")) { fullDB[CURRENT_YEAR] = fullDB[CURRENT_YEAR].filter(i => i.id !== currentMetricId); closeModal(); renderApp('Todos'); saveToDrive(); } }
+        function changeDeadlineConfig() { const n = prompt("Novo dia limite:", DEADLINE_DAY); if(n && !isNaN(n)) { DEADLINE_DAY = parseInt(n); localStorage.setItem('fav_deadline', DEADLINE_DAY); renderApp(document.querySelector('.nav-item.active') ? document.querySelector('.nav-item.active').innerText.trim() : 'Todos'); } }
+        function formatVal(val, fmt) { if(val===null||val==="") return ""; if(fmt === 'time') return val; const num = parseFloat(val); if(fmt==='percent') { const p=(Math.abs(num)<=1&&num!==0)?num*100:num; return parseFloat(p.toFixed(2)).toLocaleString('pt-BR')+'%'; } return num.toLocaleString('pt-BR',{maximumFractionDigits:2}); }
+        function getStatus(val, meta, logic, fmt) { if(val===null||val==="") return ""; let v = val; let m = meta; if(fmt === 'time') { v = timeToDecimal(val); m = timeToDecimal(meta); } else { v = parseFloat(val); m = parseFloat(meta); if(fmt === 'percent' && Math.abs(m)<=1 && Math.abs(v)>1) m=m*100; } if(logic==='maior') return v>=m?'good':'bad'; return v<=m?'good':'bad'; }
+        function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+        function showToast(msg) { const t=document.getElementById('toast'); t.innerHTML=`<i data-lucide="check-circle"></i> <span>${msg}</span>`; lucide.createIcons(); t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),3000); }
+    </script>
+</body>
+</html>
