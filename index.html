@@ -4,12 +4,17 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FAV Analytics | V30</title>
+    <title>FAV Analytics | V74 Final</title>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
 
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
     <link rel="stylesheet" href="style.css">
 </head>
 
@@ -17,87 +22,121 @@
 
     <div id="loading-overlay">
         <div class="spinner"></div>
-        <div class="loading-text">Conectando...</div>
+        <div class="loading-text">Carregando dados...</div>
     </div>
 
-    <div class="sidebar">
-        <div class="sidebar-handle"></div>
-        <div class="sidebar-content">
-            <div class="logo">
-                <i data-lucide="database-zap"></i>
-                <span>FAV ANALYTICS</span>
-            </div>
-            <div class="menu-label">Setores</div>
-            <div id="sidebar-menu"></div>
-        </div>
-    </div>
+    <div class="main-container">
+        
+        <div id="static-header-group">
+            <header class="app-header">
+                <div class="header-left">
+                    <div class="logo">
+                        <i data-lucide="database-zap" style="color:var(--accent)"></i>
+                        <span>FAV ANALYTICS</span>
+                    </div>
+                    
+                    <div class="filter-wrapper">
+                        <select id="sector-filter" onchange="setSector(this.value)">
+                            </select>
+                    </div>
+                </div>
 
-    <div class="main">
-        <div class="top-bar">
-            <div style="display:flex; align-items:center; gap:15px">
-                <h2 style="margin:0; font-size:1.1rem; font-weight:700; color:var(--text-main); letter-spacing:-0.5px" ondblclick="changeDeadlineConfig()" title="Configurar Prazo">Monitoramento <span id="year-label" style="color:var(--accent)">2025</span></h2>
-            </div>
+                <div class="header-right">
+                    <div class="year-selector">
+                        <button class="year-btn active" id="btn-2025" onclick="setYear('2025')">2025</button>
+                        <button class="year-btn" id="btn-2026" onclick="setYear('2026')">2026</button>
+                    </div>
 
-            <div class="year-tabs">
-                <button class="year-tab active" id="tab-2025" onclick="setYear('2025')">2025</button>
-                <button class="year-tab" id="tab-2026" onclick="setYear('2026')">2026</button>
-            </div>
+                    <button class="icon-btn" onclick="openPdfModal()" title="Exportar">
+                        <i data-lucide="download"></i>
+                    </button>
 
-            <div style="display:flex; gap:10px;">
-                <div class="status-badge">
-                    <div class="status-dot" style="background:var(--cell-good-text)"></div> Meta Batida</div>
-                <div class="status-badge">
-                    <div class="status-dot" style="background:var(--cell-bad-text)"></div> Atenção</div>
-            </div>
-        </div>
+                    <div class="view-toggles">
+                        <button class="view-btn active" id="btn-view-table" onclick="switchView('table')"><i data-lucide="table"></i></button>
+                        <button class="view-btn" id="btn-view-exec" onclick="switchView('exec')"><i data-lucide="bar-chart-2"></i></button>
+                    </div>
+                </div>
+            </header>
 
-        <div class="table-wrapper">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="sticky-col col-name">Indicador</th>
-                        <th class="sticky-col col-meta">Meta</th>
-                        <th>Jan</th>
-                        <th>Fev</th>
-                        <th>Mar</th>
-                        <th>Abr</th>
-                        <th>Mai</th>
-                        <th>Jun</th>
-                        <th>Jul</th>
-                        <th>Ago</th>
-                        <th>Set</th>
-                        <th>Out</th>
-                        <th>Nov</th>
-                        <th>Dez</th>
-                    </tr>
-                </thead>
-                <tbody id="table-body"></tbody>
-            </table>
-
-            <div id="empty-state" class="empty-state" style="display:none">
-                <div style="font-size:3rem; margin-bottom:15px; opacity:0.3">📂</div>
-                <div style="font-size:1.2rem; font-weight:600; margin-bottom:5px">Sem dados em <span id="empty-year">2026</span></div>
-                <button class="btn-import" onclick="importFrom2025()">
-                    <i data-lucide="copy-plus"></i> Importar de 2025
-                </button>
+            <div class="kpi-bar">
+                <div class="kpi-item">
+                    <span class="kpi-label">Performance</span>
+                    <span class="kpi-value" id="kpi-perf">-</span>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label-row">
+                        <span>Pontualidade</span>
+                        <button class="tiny-btn" onclick="configDeadline()" title="Ajustar Prazo">
+                            <i data-lucide="settings-2"></i>
+                        </button>
+                    </div>
+                    <span class="kpi-value" id="kpi-punc">-</span>
+                </div>
+                <div class="kpi-item bad">
+                    <span class="kpi-label">Críticos</span>
+                    <span class="kpi-value" id="kpi-crit">-</span>
+                </div>
             </div>
         </div>
 
-        <button class="fab" onclick="openCreateModal()" title="Novo Indicador"><i data-lucide="plus" size="24"></i></button>
+        <div class="content-viewport" id="mainContentArea">
+            
+            <div id="view-table" class="view-pane active">
+                <div class="table-wrapper">
+                    <table id="main-table">
+                        <thead>
+                            <tr>
+                                <th class="col-name">Indicador</th>
+                                <th class="col-meta">Meta</th>
+                                <th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th>
+                                <th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                    
+                    <div id="empty-state" class="empty-state" style="display:none">
+                        <i data-lucide="folder-open" size="48" style="opacity:0.3"></i>
+                        <p>Nenhum indicador encontrado.</p>
+                        <button class="btn-primary" onclick="importFrom2025()">Importar Dados 2025</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-exec" class="view-pane" style="display:none">
+                <div class="charts-grid" id="charts-area">
+                    <div class="chart-card full">
+                        <h3>Tendência Anual</h3>
+                        <div class="chart-box"><canvas id="chart-trend"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Status Geral</h3>
+                        <div class="chart-box"><canvas id="chart-status"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Pontualidade</h3>
+                        <div class="chart-box"><canvas id="chart-punc"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="fab" onclick="openCreateModal()"><i data-lucide="plus"></i></button>
     </div>
 
-    <div class="modal-overlay" id="modalOverlay">
-        <div class="modal-box">
+    <div class="modal-overlay" id="mainModal">
+        <div class="modal-box large">
             <div class="modal-header">
-                <span class="modal-title" id="modalTitle">Detalhes</span>
-                <button onclick="closeModal()" style="background:none; border:none; color:var(--text-muted); cursor:pointer"><i data-lucide="x"></i></button>
+                <h2 id="modalTitle">Detalhes</h2>
+                <button class="close-btn" onclick="closeModal('mainModal')"><i data-lucide="x"></i></button>
             </div>
-
+            
             <div class="modal-body">
-                <div id="viewMode">
+                
+                <div id="mode-view">
                     <div class="stats-row">
                         <div class="stat-card">
-                            <div class="stat-val" id="viewMetaDisplay" style="color:var(--accent)">-</div>
+                            <div class="stat-val accent" id="viewMetaDisplay">-</div>
                             <div class="stat-label">Meta Alvo</div>
                             <div id="viewLogicBadge" class="logic-badge">-</div>
                         </div>
@@ -110,99 +149,158 @@
                             <div class="stat-label">Média</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-val" id="viewTarget" style="color:var(--cell-good-text)">-</div>
+                            <div class="stat-val" id="viewTarget" style="color:var(--good)">-</div>
                             <div class="stat-label">Batida %</div>
                         </div>
-                        <div class="stat-card" style="border-color:var(--border)">
-                            <div class="stat-val" id="viewPunc" style="font-size:1.2rem">-</div>
+                        <div class="stat-card bordered" style="border-color:var(--border)">
+                            <div class="stat-val" id="viewPunc" style="font-size:1.4rem">-</div>
                             <div class="stat-label">Pontualidade</div>
                             <div id="puncBadge" style="margin-top:5px; font-size:0.7rem"></div>
                         </div>
                     </div>
-                    <div style="height: 180px; width: 100%; margin-bottom:15px"><canvas id="detailsChart"></canvas></div>
+                    
+                    <div class="chart-wrapper">
+                        <canvas id="detailChart"></canvas>
+                    </div>
 
-                    <div class="timeline-wrapper">
-                        <div class="timeline-title">Histórico de Entregas</div>
-                        <div class="timeline-track">
-                            <div class="timeline-line"></div>
-                            <div id="deliveryTimeline" style="display:contents"></div>
-                        </div>
+                    <div class="timeline-area">
+                        <h4>Histórico de Entregas</h4>
+                        <div id="timelineTrack" class="timeline-track"></div>
                     </div>
                 </div>
 
-                <div id="editMode" style="display:none;">
+                <div id="mode-edit" style="display:none">
+                    
                     <input type="hidden" id="inp-id">
+                    
                     <div class="form-grid">
-                        <div class="input-group full-width">
-                            <label>Nome</label>
-                            <input type="text" id="inp-name" class="input-ui">
+                        <div class="form-group">
+                            <label>ID</label>
+                            <input type="text" value="AUTO" class="input-field" disabled style="text-align:center; opacity:0.5;">
                         </div>
-                        <div class="input-group">
-                            <label>Setor</label>
-                            <div class="sector-wrapper">
-                                <select id="inp-sector" class="input-ui"></select>
-                                <button class="btn-icon" onclick="toggleNewSector()" title="Novo"><i data-lucide="plus" size="14"></i></button>
+
+                        <div class="form-group">
+                            <label>Nome do Indicador</label>
+                            <input type="text" id="inp-name" class="input-field" placeholder="Ex: Taxa de Ocupação">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Setor <span onclick="toggleNewSector()" style="cursor:pointer; color:var(--accent); float:right; font-size:0.65rem;">(Novo?)</span></label>
+                            <div style="position:relative">
+                                <select id="inp-sector" class="input-field"></select>
+                                <input type="text" id="inp-new-sector" class="input-field" style="display:none; position:absolute; top:0; left:0;" placeholder="Nome do Setor">
                             </div>
-                            <input type="text" id="inp-new-sector" class="input-ui" style="display:none; margin-top:5px" placeholder="Nome...">
                         </div>
-                        <div class="input-group">
+
+                        <div class="form-group">
+                            <label>Meta Alvo</label>
+                            <input type="text" id="inp-meta" class="input-field" placeholder="0">
+                        </div>
+
+                        <div class="form-group">
                             <label>Lógica</label>
-                            <select id="inp-logic" class="input-ui">
-                                <option value="maior">Maior é Melhor (↑)</option>
-                                <option value="menor">Menor é Melhor (↓)</option>
+                            <select id="inp-logic" class="input-field">
+                                <option value="maior">Maior (↑)</option>
+                                <option value="menor">Menor (↓)</option>
                             </select>
                         </div>
-                        <div class="input-group">
-                            <label style="display:flex; align-items:center">
-                                Meta 
-                                <span class="meta-history-btn" onclick="toggleMetaHistory()" title="Histórico"><i data-lucide="history" size="12"></i></span>
-                            </label>
-                            <input type="text" id="inp-meta" class="input-ui">
-                            <div id="meta-history-container" class="meta-history-container"></div>
-                        </div>
-                        <div class="input-group">
+
+                        <div class="form-group">
                             <label>Formato</label>
-                            <select id="inp-format" class="input-ui">
-                                <option value="number">Numérico (1.000)</option>
+                            <select id="inp-format" class="input-field">
+                                <option value="number">Numérico</option>
                                 <option value="percent">Porcentagem (%)</option>
                                 <option value="time">Tempo (00:00)</option>
+                                <option value="money">Moeda (R$)</option>
                             </select>
                         </div>
-                        <div class="input-group" id="year-selector-group" style="display:none">
-                            <label>Ano</label>
-                            <select id="inp-year" class="input-ui">
-                                <option value="2025">2025 (+ 2026)</option>
-                                <option value="2026">2026 (Apenas)</option>
-                            </select>
-                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color:var(--text-muted); font-size:0.8rem; text-transform:uppercase; margin-bottom:15px; border-bottom:1px solid var(--border); padding-bottom:5px;">
+                            Lançamentos Mensais
+                        </h4>
+                        <div class="months-grid" id="monthsGrid">
+                            </div>
                     </div>
 
-                    <div class="input-group">
-                        <label id="lbl-monthly-values">Valores Mensais</label>
-                        <div class="month-grid" id="monthInputsContainer"></div>
-                    </div>
                 </div>
             </div>
 
             <div class="modal-footer">
-                <div id="viewFooter" style="display:flex; width:100%; justify-content:flex-end; gap:10px">
-                    <button class="btn btn-ghost" onclick="switchToEdit()"><i data-lucide="pencil" size="14"></i> Editar</button>
-                    <button class="btn btn-primary" onclick="closeModal()">Fechar</button>
+                <div id="footer-view" class="footer-content right">
+                    <button class="btn-ghost" onclick="switchToEditMode()"><i data-lucide="pencil" size="16"></i> Editar Dados</button>
+                    <button class="btn-primary" onclick="closeModal('mainModal')">Fechar</button>
                 </div>
-                <div id="editFooter" style="display:none; width:100%; justify-content:space-between;">
-                    <button class="btn btn-danger" id="btn-delete" onclick="deleteMetric()">Excluir</button>
-                    <div style="display:flex; gap:10px">
-                        <button class="btn btn-ghost" onclick="switchToView()">Cancelar</button>
-                        <button class="btn btn-primary" onclick="saveMetric()">Salvar</button>
+                <div id="footer-edit" class="footer-content split" style="display:none">
+                    <button class="btn-danger" onclick="deleteItem()">Excluir</button>
+                    <div class="gap-10">
+                        <button class="btn-ghost" onclick="switchToViewMode()">Cancelar</button>
+                        <button class="btn-primary" onclick="saveItem()">Salvar Alterações</button>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <div id="toast" class="toast"><i data-lucide="check-circle"></i> <span>Salvo!</span></div>
+    <div class="modal-overlay" id="pdfModal">
+        <div class="modal-box small">
+            <div class="modal-header">
+                <h3>Exportar Dados</h3>
+                <button class="close-btn" onclick="closeModal('pdfModal')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body centered">
+                <p style="color:var(--text-muted); margin-bottom:20px; font-size:0.9rem">Selecione o formato desejado:</p>
+                
+                <button class="btn-option" onclick="generateExport('table-pdf')">
+                    <i data-lucide="file-text"></i> Relatório em PDF (Tabela)
+                </button>
+                
+                <button class="btn-option" onclick="generateExport('excel')">
+                    <i data-lucide="sheet"></i> Planilha Editável (Excel)
+                </button>
+                
+                <button class="btn-option" onclick="generateExport('visual-pdf')">
+                    <i data-lucide="pie-chart"></i> Relatório Visual (Gráficos)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="monthModal">
+        <div class="modal-box small">
+            <div class="modal-header">
+                <h3 id="monthModalTitle">Detalhes</h3>
+                <button class="close-btn" onclick="closeModal('monthModal')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body centered">
+                <div class="month-stat-big">
+                    <span class="label">Valor Realizado</span>
+                    <span class="value" id="monthValue">-</span>
+                </div>
+                <div class="month-stat-row">
+                    <div class="ms-item">
+                        <span class="label">Meta</span>
+                        <span class="val" id="monthMeta">-</span>
+                    </div>
+                    <div class="ms-item">
+                        <span class="label">Status</span>
+                        <span class="val" id="monthStatus">-</span>
+                    </div>
+                </div>
+                <div class="month-delivery">
+                    <span class="label">Data de Entrega</span>
+                    <div class="delivery-badge" id="monthDelivery">-</div>
+                </div>
+            </div>
+            <div class="modal-footer centered">
+                <button class="btn-primary full" onclick="closeModal('monthModal')">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">Salvo com sucesso!</div>
 
     <script src="script.js"></script>
 </body>
-
 </html>

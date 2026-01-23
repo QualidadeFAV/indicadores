@@ -1,146 +1,229 @@
+/* * FAV ANALYTICS - CORE V73 FINAL
+ * Features: Layout V60 + Correção Lógica de Atraso (Janela de Validade Rígida)
+ */
+
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
 
 lucide.createIcons();
 const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+// --- ESTADO GLOBAL ---
 let fullDB = { "2025": [], "2026": [] };
-let isNewSectorMode = false;
+let currentYear = '2025';
+let currentSector = 'Todos';
+let currentView = 'table';
+let deadlineDay = parseInt(localStorage.getItem('fav_deadline')) || 15;
+let charts = {}; 
 let chartInstance = null;
 let currentMetricId = null;
-let CURRENT_YEAR = '2025';
-let DEADLINE_DAY = parseInt(localStorage.getItem('fav_deadline')) || 15;
+let isNewSectorMode = false;
+let statusChartMode = 'last'; 
 
-const iconMap = {
-    "Atendimento": "users",
-    "Centro Cirúrgico": "scissors",
-    "TI": "monitor",
-    "DGG": "building",
-    "SCIH": "shield-alert",
-    "POA": "file-bar-chart",
-    "Comunicação": "megaphone",
-    "Hotelaria": "bed",
-    "Manutenção": "wrench",
-    "Farmácia": "pill",
-    "Laboratório": "flask-conical",
-    "Engenharia Clínica": "activity",
-    "Horários Médicos": "clock",
-    "Marcação": "calendar-check",
-    "Projetos Externos": "globe"
+// --- INICIALIZAÇÃO ---
+window.onload = () => {
+    loadData();
 };
 
-window.onload = () => { loadFromDrive(); };
-
-function setYear(year) {
-    CURRENT_YEAR = year;
-    document.getElementById('year-label').innerText = year;
-    document.querySelectorAll('.year-tab').forEach(b => b.classList.remove('active'));
-    document.getElementById(`tab-${year}`).classList.add('active');
-    renderApp(document.querySelector('.nav-item.active') ? document.querySelector('.nav-item.active').innerText.trim() : 'Todos');
-}
-
-function importFrom2025() {
-    if (confirm("Copiar estrutura de 2025 para 2026?")) {
-        const baseData = fullDB['2025'];
-        const newData = baseData.map(item => ({
-            id: Date.now() + Math.random(),
-            sector: item.sector,
-            name: item.name,
-            logic: item.logic,
-            meta: item.meta,
-            format: item.format,
-            data: Array(12).fill(null),
-            dates: Array(12).fill(null),
-            meta_history: []
-        }));
-        fullDB['2026'] = newData;
-        saveToDrive();
-        renderApp();
-    }
-}
-
-function getDataForCurrentYear() { return fullDB[CURRENT_YEAR] || []; }
-
-async function loadFromDrive() {
-    document.getElementById('loading-overlay').style.display = 'flex';
+async function loadData() {
+    toggleLoading(true);
     try {
         const res = await fetch(API_URL);
         const data = await res.json();
-        fullDB = Array.isArray(data) ? { "2025": data, "2026": [] } : data;
-        if (!fullDB["2025"]) fullDB["2025"] = [];
-        if (!fullDB["2026"]) fullDB["2026"] = [];
+        
+        if (Array.isArray(data)) {
+            fullDB["2025"] = data;
+            fullDB["2026"] = [];
+        } else {
+            fullDB = data;
+            if (!fullDB["2025"]) fullDB["2025"] = [];
+            if (!fullDB["2026"]) fullDB["2026"] = [];
+        }
         renderApp();
-    } catch (err) { alert("Erro de conexão."); } finally { document.getElementById('loading-overlay').style.display = 'none'; }
+    } catch (e) {
+        console.error(e);
+        showToast("Modo Offline (Erro Conexão)", "error");
+    } finally {
+        toggleLoading(false);
+    }
 }
 
-async function saveToDrive() {
-    showToast("Salvando...");
+async function saveData() {
+    showToast("Salvando...", "wait");
     try {
         await fetch(API_URL, { method: 'POST', body: JSON.stringify(fullDB) });
         showToast("Sincronizado!");
-    } catch (err) { showToast("Erro ao salvar!"); }
+    } catch (e) {
+        showToast("Erro ao salvar!", "error");
+    }
 }
 
-function renderApp(filter = 'Todos') {
-    updateSidebar(filter);
-    renderTable(filter);
-}
+// --- RENDERIZAÇÃO ---
+function renderApp(filter = currentSector) {
+    populateSectorFilter();
+    
+    const data = fullDB[currentYear] || [];
+    const filtered = filter === 'Todos' ? data : data.filter(i => i.sector === filter);
 
-function updateSidebar(activeFilter) {
-    const currentData = getDataForCurrentYear();
-    const menu = document.getElementById('sidebar-menu');
-    const uniqueSectors = currentData.length > 0 ? [...new Set(currentData.map(i => i.sector))].sort() : [];
-    let html = `<button class="nav-item ${activeFilter === 'Todos' ? 'active' : ''}" onclick="renderApp('Todos')"><i data-lucide="layout-grid" size="16"></i> <span>Todos</span></button>`;
-    uniqueSectors.forEach(sec => {
-        const icon = iconMap[sec] || "folder";
-        html += `<button class="nav-item ${activeFilter === sec ? 'active' : ''}" onclick="renderApp('${sec}')"><i data-lucide="${icon}" size="16"></i> <span>${sec}</span></button>`;
-    });
-    menu.innerHTML = html;
+    updateKPIs(filtered);
+
+    if (currentView === 'table') {
+        renderTable(filtered);
+    } else {
+        renderExecutiveCharts(filtered);
+    }
+    
+    document.getElementById('btn-2025').classList.toggle('active', currentYear === '2025');
+    document.getElementById('btn-2026').classList.toggle('active', currentYear === '2026');
     lucide.createIcons();
 }
 
-function renderTable(filter) {
+// --- NOVA LÓGICA DE PONTUALIDADE (JANELA DE VALIDADE) ---
+function checkOnTime(dateStr, monthIdx) {
+    if (!dateStr) return false;
+    
+    // Data da Entrega (Input)
+    const delivery = new Date(dateStr + "T12:00:00");
+    const curYear = parseInt(currentYear);
+
+    // 1. Definir Data Mínima: 1º dia do Mês de Referência
+    // Isso impede que um relatório de Jan/2026 (digitado errada como 2025) fique verde.
+    const minDate = new Date(curYear, monthIdx, 1, 0, 0, 0);
+
+    // 2. Definir Data Limite: Dia 'deadlineDay' do Mês Seguinte
+    let limitYear = curYear;
+    let limitMonth = monthIdx + 1; 
+    
+    if (limitMonth > 11) {
+        limitMonth = 0; 
+        limitYear++;
+    }
+    
+    const limitDate = new Date(limitYear, limitMonth, deadlineDay, 23, 59, 59);
+    
+    // Regra Rígida: A entrega deve acontecer DENTRO da janela (Inicio Mês Referência <-> Prazo Final)
+    // Se for antes (ano errado) = False (Vermelho/Erro)
+    // Se for depois (atraso) = False (Vermelho)
+    return delivery >= minDate && delivery <= limitDate;
+}
+
+// --- LÓGICA DE STATUS (PERFORMANCE) ---
+function getStatus(val, meta, logic, fmt) {
+    if (val === null || val === "" || val === "NaN") return "empty";
+    
+    let v, m;
+    
+    if (fmt === 'time') {
+        v = timeToDec(val);
+    } else {
+        if (typeof val === 'string') {
+            v = parseFloat(val.replace(',', '.'));
+        } else {
+            v = parseFloat(val);
+        }
+    }
+    
+    if (fmt === 'time') {
+        m = timeToDec(meta);
+    } else {
+        if (typeof meta === 'string') {
+            m = parseFloat(meta.replace(',', '.'));
+        } else {
+            m = parseFloat(meta);
+        }
+    }
+    
+    if (isNaN(v) || isNaN(m)) return "empty";
+    
+    if (logic === 'maior') {
+        return v >= m ? 'good' : 'bad';
+    } else {
+        return v <= m ? 'good' : 'bad';
+    }
+}
+
+// --- KPIs ---
+function updateKPIs(data) {
+    let totalPerf = 0, hitsPerf = 0;
+    let countCrit = 0;
+    let puncTotal = 0, puncHits = 0;
+
+    data.forEach(item => {
+        // Performance
+        item.data.forEach(val => {
+            if (val !== null && val !== "") {
+                const st = getStatus(val, item.meta, item.logic, item.format);
+                if (st !== 'empty') {
+                    totalPerf++;
+                    if (st === 'good') hitsPerf++;
+                    if (st === 'bad') countCrit++;
+                }
+            }
+        });
+
+        // Pontualidade (Usa nova lógica checkOnTime)
+        if (item.dates) {
+            item.dates.forEach((d, i) => {
+                if (item.data[i] !== null && item.data[i] !== "") {
+                    puncTotal++;
+                    if (checkOnTime(d, i)) puncHits++;
+                }
+            });
+        }
+    });
+
+    const perf = totalPerf ? Math.round((hitsPerf / totalPerf) * 100) : 0;
+    const punc = puncTotal ? Math.round((puncHits / puncTotal) * 100) : 0;
+
+    setText('kpi-perf', perf + "%");
+    setText('kpi-punc', punc + "%");
+    setText('kpi-crit', countCrit);
+}
+
+// --- TABELA ---
+function renderTable(data) {
     const tbody = document.getElementById('table-body');
     const emptyState = document.getElementById('empty-state');
-    const tableElement = document.querySelector('table');
+    const tableEl = document.querySelector('#main-table');
     tbody.innerHTML = '';
 
-    const currentData = getDataForCurrentYear();
-    if (currentData.length === 0) {
-        tableElement.style.display = 'none';
+    if (!data.length) {
+        tableEl.style.display = 'none';
         emptyState.style.display = 'flex';
-        document.getElementById('empty-year').innerText = CURRENT_YEAR;
-        if (CURRENT_YEAR === '2026' && fullDB['2025'].length > 0) document.querySelector('.btn-import').style.display = 'flex';
-        else document.querySelector('.btn-import').style.display = 'none';
         return;
-    } else {
-        tableElement.style.display = 'table';
-        emptyState.style.display = 'none';
     }
+    
+    tableEl.style.display = 'table';
+    emptyState.style.display = 'none';
 
-    const sectors = filter === 'Todos' ? [...new Set(currentData.map(i => i.sector))].sort() : [filter];
+    const sectors = currentSector === 'Todos' ? [...new Set(data.map(i => i.sector))].sort() : [currentSector];
 
     sectors.forEach(sec => {
-        const items = currentData.filter(i => i.sector === sec);
+        const items = data.filter(i => i.sector === sec);
         if (items.length === 0) return;
-        const header = document.createElement('tr');
-        header.className = 'sector-row';
-        header.innerHTML = `<td colspan="14">${sec}</td>`;
-        tbody.appendChild(header);
+
+        if (currentSector === 'Todos') {
+            tbody.innerHTML += `<tr class="sector-header"><td colspan="14">${sec}</td></tr>`;
+        }
 
         items.forEach(item => {
             const tr = document.createElement('tr');
-            tr.onclick = () => openDetails(item.id);
-            let html = `<td class="sticky-col col-name" title="${item.name}">${item.name}</td>`;
-            html += `<td class="sticky-col col-meta">${formatVal(item.meta, item.format)}</td>`;
+            
+            let html = `
+                <td class="col-name" onclick="openMainModal(${item.id})">${item.name}</td>
+                <td class="col-meta">${formatVal(item.meta, item.format)}</td>
+            `;
+
             for (let i = 0; i < 12; i++) {
                 const val = item.data[i];
-                const cls = getStatus(val, item.meta, item.logic, item.format);
-                let arrow = "";
-                if (item.format !== 'time' && i > 0 && item.data[i] !== null && item.data[i - 1] !== null) {
-                    const diff = item.data[i] - item.data[i - 1];
-                    if (diff > 0) arrow = "▲";
-                    else if (diff < 0) arrow = "▼";
-                }
-                html += `<td class="${cls}">${formatVal(val, item.format)}<span class="trend-arrow">${arrow}</span></td>`;
+                const status = getStatus(val, item.meta, item.logic, item.format);
+                
+                let cls = 'cell-empty';
+                if (status === 'good') cls = 'cell-good';
+                else if (status === 'bad') cls = 'cell-bad';
+
+                html += `<td class="${cls}" onclick="openMonthModal(${item.id}, ${i})">
+                    ${formatVal(val, item.format)}
+                </td>`;
             }
             tr.innerHTML = html;
             tbody.appendChild(tr);
@@ -148,272 +231,786 @@ function renderTable(filter) {
     });
 }
 
-function openDetails(id) {
+// --- GRÁFICOS EXECUTIVOS ---
+function renderExecutiveCharts(data) {
+    if (currentView !== 'exec') return;
+    renderTrendChart(data);
+    renderStatusChart(data);
+    renderPuncChart(data);
+}
+
+function renderTrendChart(data) {
+    const ctxTrend = document.getElementById('chart-trend').getContext('2d');
+    if (charts.trend) charts.trend.destroy();
+
+    const gradientTrend = ctxTrend.createLinearGradient(0, 300, 0, 0);
+    gradientTrend.addColorStop(0, '#1e3a8a');
+    gradientTrend.addColorStop(1, '#3b82f6');
+
+    const mAvg = Array(12).fill(0);
+    const mCount = Array(12).fill(0);
+
+    data.forEach(item => {
+        item.data.forEach((val, i) => {
+            if (val !== null && val !== "") {
+                const st = getStatus(val, item.meta, item.logic, item.format);
+                if (st !== 'empty') {
+                    mAvg[i] += (st === 'good' ? 100 : 0);
+                    mCount[i]++;
+                }
+            }
+        });
+    });
+
+    const trendData = mAvg.map((s, i) => mCount[i] ? Math.round(s / mCount[i]) : 0);
+
+    const dataLabelPlugin = {
+        id: 'customDataLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            chart.data.datasets.forEach((dataset, i) => {
+                const meta = chart.getDatasetMeta(i);
+                meta.data.forEach((bar, index) => {
+                    const value = dataset.data[index];
+                    if (value > 0) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.font = 'bold 10px Inter, sans-serif';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(value + '%', bar.x, bar.y + 15);
+                    }
+                });
+            });
+        }
+    };
+
+    charts.trend = new Chart(ctxTrend, {
+        type: 'bar',
+        data: {
+            labels: months,
+            datasets: [{
+                label: '% Performance',
+                data: trendData,
+                backgroundColor: gradientTrend,
+                borderRadius: 4,
+                barPercentage: 0.6
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: function(context) { return context.parsed.y + '% de Aproveitamento'; } } }
+            },
+            scales: {
+                y: { beginAtZero: true, max: 100, grid: { color: '#27272a' }, ticks: { color: '#a1a1aa', stepSize: 25 } },
+                x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 10 } } }
+            }
+        },
+        plugins: [dataLabelPlugin]
+    });
+}
+
+function renderStatusChart(data) {
+    const ctxStatus = document.getElementById('chart-status').getContext('2d');
+    if (charts.status) charts.status.destroy();
+
+    let batido = 0;          
+    let naoBatido = 0;       
+    let naoContabilizado = 0; 
+
+    data.forEach(item => {
+        if (statusChartMode === 'year') {
+            item.data.forEach(val => {
+                const st = getStatus(val, item.meta, item.logic, item.format);
+                if (st === 'good') batido++;
+                else if (st === 'bad') naoBatido++;
+                else naoContabilizado++;
+            });
+        } else {
+            if (!temDadosValidos(item)) {
+                naoContabilizado++;
+            } else {
+                const valid = item.data.filter(v => 
+                    v !== null && 
+                    v !== undefined && 
+                    (typeof v !== 'string' || (v.trim() !== "" && v.trim() !== "NaN"))
+                );
+                
+                if (valid.length > 0) {
+                    const ultimoValor = valid[valid.length - 1];
+                    const status = getStatus(ultimoValor, item.meta, item.logic, item.format);
+                    
+                    if (status === 'good') batido++;
+                    else if (status === 'bad') naoBatido++;
+                    else naoContabilizado++;
+                } else {
+                    naoContabilizado++;
+                }
+            }
+        }
+    });
+
+    const centerTextPlugin = {
+        id: 'centerText',
+        beforeDraw: function(chart) {
+            if (chart.config.type !== 'doughnut') return;
+            const width = chart.width, height = chart.height, ctx = chart.ctx;
+            ctx.restore();
+            
+            const fontSize = (height / 140).toFixed(2);
+            ctx.font = `bold ${fontSize}em Inter`;
+            ctx.textBaseline = "middle";
+            ctx.fillStyle = "#ffffff";
+
+            const text = statusChartMode === 'year' ? "ANO" : "ATUAL";
+            const textX = Math.round((width - ctx.measureText(text).width) / 2);
+            const textY = height / 2;
+
+            ctx.fillText(text, textX, textY);
+            
+            ctx.font = `normal ${fontSize*0.4}em Inter`;
+            ctx.fillStyle = "#a1a1aa";
+            const sub = "(Clique)";
+            const subX = Math.round((width - ctx.measureText(sub).width) / 2);
+            ctx.fillText(sub, subX, textY + 20);
+            
+            ctx.save();
+        }
+    };
+
+    charts.status = new Chart(ctxStatus, {
+        type: 'doughnut',
+        data: {
+            labels: ['Batido', 'Não Batido', 'S/ Dados'],
+            datasets: [{
+                data: [batido, naoBatido, naoContabilizado],
+                backgroundColor: [
+                    '#10b981',  // Verde
+                    '#ef4444',  // Vermelho
+                    '#6b7280'   // Cinza
+                ],
+                borderWidth: 0,
+                hoverOffset: 4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            cutout: '70%',
+            onClick: (e) => {
+                statusChartMode = statusChartMode === 'last' ? 'year' : 'last';
+                showToast(`Visão: ${statusChartMode === 'year' ? 'Acumulado do Ano' : 'Status Atual'}`, "wait");
+                renderStatusChart(data); 
+            },
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#f4f4f5', font: { size: 11 }, usePointStyle: true, padding: 20 } },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            let value = context.parsed;
+                            let total = batido + naoBatido + naoContabilizado;
+                            let perc = total > 0 ? Math.round((value / total) * 100) : 0;
+                            return `${label}: ${value} (${perc}%)`;
+                        }
+                    }
+                }
+            }
+        },
+        plugins: [centerTextPlugin]
+    });
+}
+
+function renderPuncChart(data) {
+    const ctxPunc = document.getElementById('chart-punc').getContext('2d');
+    if (charts.punc) charts.punc.destroy();
+
+    const pData = Array(12).fill(0).map((_, i) => {
+        let ok = 0, tot = 0;
+        data.forEach(item => {
+            if (item.dates && item.dates[i] && item.data[i] !== null) {
+                tot++;
+                if (checkOnTime(item.dates[i], i)) ok++;
+            }
+        });
+        return tot ? Math.round((ok / tot) * 100) : 0;
+    });
+
+    const gradientPunc = ctxPunc.createLinearGradient(0, 0, 0, 300);
+    gradientPunc.addColorStop(0, 'rgba(245, 158, 11, 0.2)');
+    gradientPunc.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
+
+    charts.punc = new Chart(ctxPunc, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Pontualidade',
+                data: pData,
+                borderColor: '#f59e0b',
+                backgroundColor: gradientPunc,
+                borderWidth: 2,
+                pointBackgroundColor: '#18181b',
+                pointBorderColor: '#f59e0b',
+                pointRadius: 4,
+                fill: true,
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, max: 100, grid: { color: '#27272a' }, ticks: { color: '#a1a1aa' } },
+                x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 10 } } }
+            }
+        }
+    });
+}
+
+// --- MODAL PRINCIPAL ---
+function openMainModal(id) {
     currentMetricId = id;
-    const item = getDataForCurrentYear().find(i => i.id === id);
+    const item = fullDB[currentYear].find(i => i.id == id);
     if (!item) return;
 
-    document.getElementById('modalTitle').innerText = `${item.name}`;
-
-    // POPULA A META E O BADGE DE LÓGICA
-    document.getElementById('viewMetaDisplay').innerText = formatVal(item.meta, item.format);
-    const logicText = item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓';
-    document.getElementById('viewLogicBadge').innerText = logicText;
+    setText('modalTitle', item.name);
+    setText('viewMetaDisplay', formatVal(item.meta, item.format));
+    setText('viewLogicBadge', item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓');
 
     const valid = item.data.filter(v => v !== null && v !== "");
-
     if (valid.length > 0) {
         const last = valid[valid.length - 1];
         let hits = 0;
-        valid.forEach(v => { if (getStatus(v, item.meta, item.logic, item.format) === 'good') hits++; });
+        
+        valid.forEach(v => {
+            const s = getStatus(v, item.meta, item.logic, item.format);
+            if (s === 'good') hits++;
+        });
 
-        document.getElementById('viewLast').innerText = formatVal(last, item.format);
-        if (item.format === 'time') document.getElementById('viewAvg').innerText = "-";
-        else {
-            const avg = valid.reduce((a, b) => a + parseFloat(b), 0) / valid.length;
-            document.getElementById('viewAvg').innerText = formatVal(avg, item.format);
-        }
-        document.getElementById('viewTarget').innerText = Math.round((hits / valid.length) * 100) + '%';
-    } else {
-        document.getElementById('viewLast').innerText = "-";
-        document.getElementById('viewAvg').innerText = "-";
-        document.getElementById('viewTarget').innerText = "-";
-    }
-
-    const dates = item.dates || Array(12).fill(null);
-    let onTimeCount = 0;
-    let totalDeliveries = 0;
-    let timelineHTML = "";
-
-    dates.forEach((dateStr, idx) => {
-        const monthName = months[idx].substring(0, 3);
-        let statusClass = "empty";
-        let tooltip = "Pendente";
-        if (item.data[idx] !== null && item.data[idx] !== "") {
-            totalDeliveries++;
-            if (dateStr) {
-                const day = parseInt(dateStr.split('-')[2]);
-                if (day <= DEADLINE_DAY) {
-                    onTimeCount++;
-                    statusClass = "ok";
-                    tooltip = `No prazo: ${dateStr}`;
-                } else {
-                    statusClass = "late";
-                    tooltip = `Atrasado: ${dateStr}`;
-                }
+        setText('viewLast', formatVal(last, item.format));
+        setText('viewTarget', Math.round((hits / valid.length) * 100) + '%');
+        
+        if (item.format === 'time') {
+            setText('viewAvg', "-");
+        } else {
+            const values = valid.map(v => parseFloat(String(v).replace(',', '.'))).filter(n => !isNaN(n));
+            
+            if (values.length > 0) {
+                const sum = values.reduce((a, b) => a + b, 0);
+                const avg = sum / values.length;
+                setText('viewAvg', formatVal(avg, item.format));
             } else {
-                statusClass = "empty";
-                tooltip = "Sem data de entrega";
+                setText('viewAvg', "-");
             }
         }
-        timelineHTML += `<div class="timeline-item" title="${tooltip}"><div class="timeline-dot ${statusClass}"></div><div class="timeline-label">${monthName}</div></div>`;
-    });
-    document.getElementById('deliveryTimeline').innerHTML = timelineHTML;
-
-    const puncRate = totalDeliveries > 0 ? Math.round((onTimeCount / totalDeliveries) * 100) : 0;
-    document.getElementById('viewPunc').innerText = puncRate + "%";
-    const badgeEl = document.getElementById('puncBadge');
-    if (totalDeliveries === 0) badgeEl.innerHTML = '<span class="badge badge-warn">Sem dados</span>';
-    else if (puncRate === 100) badgeEl.innerHTML = '<span class="badge badge-good">Impecável</span>';
-    else if (puncRate >= 70) badgeEl.innerHTML = '<span class="badge badge-warn">Atenção</span>';
-    else badgeEl.innerHTML = '<span class="badge badge-bad">Crítico</span>';
-
-    renderChart(item, item.data);
-    switchToView();
-    document.getElementById('modalOverlay').classList.add('open');
-}
-
-// ... [FUNÇÕES MODAIS E DE SALVAMENTO] ...
-function openCreateModal() {
-    currentMetricId = null;
-    document.getElementById('modalOverlay').classList.add('open');
-    switchToEdit(true);
-}
-
-function switchToView() {
-    document.getElementById('viewMode').style.display = 'block';
-    document.getElementById('viewFooter').style.display = 'flex';
-    document.getElementById('editMode').style.display = 'none';
-    document.getElementById('editFooter').style.display = 'none';
-    const item = getDataForCurrentYear().find(i => i.id === currentMetricId);
-    if (item) document.getElementById('modalTitle').innerText = `${item.name}`;
-}
-
-function switchToEdit(isNew = false) {
-    document.getElementById('viewMode').style.display = 'none';
-    document.getElementById('viewFooter').style.display = 'none';
-    document.getElementById('editMode').style.display = 'block';
-    document.getElementById('editFooter').style.display = 'flex';
-    const inputs = document.getElementById('monthInputsContainer');
-    inputs.innerHTML = '';
-    populateSectorSelect();
-    isNewSectorMode = false;
-    document.getElementById('inp-sector').style.display = 'block';
-    document.getElementById('inp-new-sector').style.display = 'none';
-    document.getElementById('meta-history-container').style.display = 'none';
-    document.getElementById('lbl-monthly-values').innerText = `Valores (${CURRENT_YEAR})`;
-    const yearGroup = document.getElementById('year-selector-group');
-    if (isNew) {
-        document.getElementById('modalTitle').innerText = `Novo Indicador`;
-        yearGroup.style.display = 'block';
-        document.getElementById('inp-year').value = CURRENT_YEAR;
-        document.getElementById('inp-id').value = "";
-        document.getElementById('inp-name').value = "";
-        document.getElementById('inp-meta').value = "";
-        document.getElementById('btn-delete').style.display = 'none';
-        months.forEach((m, i) => inputs.innerHTML += createMonthInput(i, m, '', ''));
     } else {
-        yearGroup.style.display = 'none';
-        const item = getDataForCurrentYear().find(i => i.id === currentMetricId);
-        document.getElementById('modalTitle').innerText = "Editar";
-        document.getElementById('inp-id').value = item.id;
-        document.getElementById('inp-name').value = item.name;
-        document.getElementById('inp-sector').value = item.sector;
-        document.getElementById('inp-logic').value = item.logic;
-        document.getElementById('inp-meta').value = item.meta;
-        document.getElementById('inp-format').value = item.format;
-        document.getElementById('btn-delete').style.display = 'block';
-        const dates = item.dates || Array(12).fill(null);
-        months.forEach((m, i) => inputs.innerHTML += createMonthInput(i, m, item.data[i], dates[i]));
-        renderMetaHistory(item.meta_history);
+        setText('viewLast', "-");
+        setText('viewAvg', "-");
+        setText('viewTarget', "-");
     }
+
+    let pCount = 0, pTotal = 0;
+    const dates = item.dates || Array(12).fill(null);
+    dates.forEach((d, i) => {
+        if (item.data[i] !== null && item.data[i] !== "") {
+            pTotal++;
+            if (checkOnTime(d, i)) pCount++;
+        }
+    });
+    const pScore = pTotal ? Math.round((pCount / pTotal) * 100) : 0;
+    setText('viewPunc', pTotal ? pScore + "%" : "-");
+    
+    const badgeEl = document.getElementById('puncBadge');
+    if (badgeEl) {
+        if(pTotal === 0) badgeEl.innerHTML = '<span class="badge badge-warn">Sem dados</span>';
+        else if(pScore === 100) badgeEl.innerHTML = '<span class="badge badge-good">Excelente</span>';
+        else if(pScore >= 70) badgeEl.innerHTML = '<span class="badge badge-warn">Regular</span>';
+        else badgeEl.innerHTML = '<span class="badge badge-bad">Crítico</span>';
+    }
+
+    renderTimeline(item);
+    renderDetailChart(item);
+    populateEditForm(item);
+
+    switchToViewMode();
+    document.getElementById('mainModal').classList.add('open');
+    
+    setTimeout(() => renderDetailChart(item), 50);
 }
 
-function createMonthInput(i, m, val, dateVal) {
-    const v = val !== null && val !== undefined ? val : '';
-    const d = dateVal || '';
-    let borderClass = "";
-    if (d) {
-        const day = parseInt(d.split('-')[2]);
-        borderClass = day > DEADLINE_DAY ? "late" : "ontime";
+function renderTimeline(item) {
+    const c = document.getElementById('timelineTrack');
+    let h = '';
+    
+    for (let i = 0; i < 12; i++) {
+        const hasData = item.data[i] !== null && item.data[i] !== "";
+        
+        if (hasData) {
+            const dateStr = item.dates[i];
+            let cls = 'tl-dot'; 
+            let tip = 'Entregue';
+
+            if (dateStr) {
+                if (checkOnTime(dateStr, i)) { 
+                    cls += ' ok';  
+                    tip = 'No Prazo'; 
+                } else { 
+                    cls += ' late'; 
+                    tip = 'Atrasado'; 
+                }
+            } else {
+                cls += ' empty'; 
+                tip = 'Sem data'; 
+            }
+            
+            h += `<div class="timeline-item" title="${months[i]}: ${tip}">
+                <div class="${cls}"></div><div class="tl-label">${months[i]}</div>
+            </div>`;
+        }
     }
-    return `<div class="month-item"><div class="month-label"><span>${m}</span>${d ? (borderClass==='late'?'<span style="color:var(--punc-bad)">⏱️</span>':'<span style="color:var(--punc-good)">✓</span>') : ''}</div><input type="text" id="m-${i}" class="month-input-val" value="${v}" placeholder="-"><input type="date" id="d-${i}" class="date-mini ${borderClass}" value="${d}"></div>`;
+    
+    c.innerHTML = h || '<div style="color:#666;font-size:0.8rem;text-align:center;width:100%;padding:10px">Sem dados lançados.</div>';
 }
 
-function saveMetric() {
+function populateEditForm(item) {
+    document.getElementById('inp-id').value = item.id;
+    document.getElementById('inp-name').value = item.name;
+    document.getElementById('inp-meta').value = item.meta;
+    document.getElementById('inp-logic').value = item.logic;
+    document.getElementById('inp-format').value = item.format;
+    
+    const secSel = document.getElementById('inp-sector');
+    const secs = [...new Set(fullDB[currentYear].map(i => i.sector))];
+    secSel.innerHTML = secs.map(s => `<option value="${s}">${s}</option>`).join('');
+    secSel.value = item.sector;
+
+    const c = document.getElementById('monthsGrid');
+    c.innerHTML = '';
+    months.forEach((m, i) => {
+        const v = item.data[i] || '';
+        const d = item.dates[i] || '';
+        c.innerHTML += `
+            <div class="month-inp-group">
+                <div class="mig-header"><span>${m}</span></div>
+                <input type="text" id="mv-${i}" class="input-field" value="${v}" placeholder="-" style="text-align:center">
+                <input type="date" id="md-${i}" class="date-inp" value="${d}">
+            </div>
+        `;
+    });
+}
+
+function saveItem() {
     const id = document.getElementById('inp-id').value;
     const name = document.getElementById('inp-name').value;
-    let sector = isNewSectorMode ? document.getElementById('inp-new-sector').value : document.getElementById('inp-sector').value;
-    const logic = document.getElementById('inp-logic').value;
-    const fmt = document.getElementById('inp-format').value;
-    const chosenYear = document.getElementById('inp-year').value;
-    const rawMeta = document.getElementById('inp-meta').value;
-    let meta = rawMeta;
-    if (fmt !== 'time' && rawMeta !== "") { meta = parseFloat(rawMeta); if (isNaN(meta)) meta = 0; }
-    if (!name || !sector) { alert("Preencha Nome e Setor."); return; }
-    const dataArr = [];
-    const datesArr = [];
+    const sector = isNewSectorMode ? document.getElementById('inp-new-sector').value : document.getElementById('inp-sector').value;
+    
+    if (!name || !sector) return alert("Preencha Nome e Setor.");
+
+    const newData = [];
+    const newDates = [];
     for (let i = 0; i < 12; i++) {
-        const val = document.getElementById(`m-${i}`).value;
-        const date = document.getElementById(`d-${i}`).value;
-        if (fmt === 'time') dataArr.push(val === "" ? null : val);
-        else dataArr.push(val === "" ? null : parseFloat(val));
-        datesArr.push(date === "" ? null : date);
+        newData.push(document.getElementById(`mv-${i}`).value || null);
+        newDates.push(document.getElementById(`md-${i}`).value || null);
     }
-    let history = [];
-    if (id) { const oldItem = fullDB[CURRENT_YEAR].find(i => i.id == parseInt(id)); if (oldItem) { history = oldItem.meta_history || []; if (oldItem.meta != meta) history.push({ date: new Date().toLocaleDateString('pt-BR'), value: oldItem.meta }); } }
-    const createObj = (d, dt, hist) => ({ id: id ? parseInt(id) : Date.now() + Math.random(), name, sector, logic, meta: meta, format: fmt, data: d, dates: dt, meta_history: hist || [] });
+
+    const newItem = {
+        id: id ? parseFloat(id) : Date.now(),
+        name, sector,
+        meta: document.getElementById('inp-meta').value,
+        logic: document.getElementById('inp-logic').value,
+        format: document.getElementById('inp-format').value,
+        data: newData, dates: newDates
+    };
+
     if (id) {
-        const idx = fullDB[CURRENT_YEAR].findIndex(i => i.id == parseInt(id));
-        if (idx !== -1) fullDB[CURRENT_YEAR][idx] = createObj(dataArr, datesArr, history);
-        currentMetricId = fullDB[CURRENT_YEAR][idx].id;
-        openDetails(currentMetricId);
+        const idx = fullDB[currentYear].findIndex(i => i.id == id);
+        fullDB[currentYear][idx] = newItem;
+        currentMetricId = newItem.id;
+        openMainModal(currentMetricId);
     } else {
-        if (chosenYear === '2025') {
-            fullDB['2025'].push(createObj(dataArr, datesArr, []));
-            fullDB['2026'].push(createObj(Array(12).fill(null), Array(12).fill(null), []));
-        } else { fullDB['2026'].push(createObj(dataArr, datesArr, [])); }
-        closeModal();
+        fullDB[currentYear].push(newItem);
+        if (currentYear === '2025') {
+            const clone = {...newItem, id: Date.now()+1, data: Array(12).fill(null), dates: Array(12).fill(null)};
+            fullDB['2026'].push(clone);
+        }
+        closeModal('mainModal');
     }
-    if (!id && CURRENT_YEAR !== chosenYear) setYear(chosenYear);
-    else renderApp('Todos');
-    saveToDrive();
+    saveData();
+    renderApp(currentSector);
 }
 
-function timeToDecimal(t) { if (!t || typeof t !== 'string' || !t.includes(':')) return 0; const parts = t.split(':'); return parseFloat(parts[0]) + (parseFloat(parts[1]) / 60); }
+function openCreateModal() {
+    currentMetricId = null;
+    setText('modalTitle', 'Novo Indicador');
+    document.getElementById('inp-id').value = "";
+    document.getElementById('inp-name').value = "";
+    document.getElementById('inp-meta').value = "";
+    
+    const c = document.getElementById('monthsGrid');
+    c.innerHTML = '';
+    months.forEach((m, i) => {
+        c.innerHTML += `
+            <div class="month-inp-group">
+                <div class="mig-header"><span>${m}</span></div>
+                <input type="text" id="mv-${i}" class="input-field" placeholder="-" style="text-align:center">
+                <input type="date" id="md-${i}" class="date-inp">
+            </div>
+        `;
+    });
+    
+    const secSel = document.getElementById('inp-sector');
+    const secs = [...new Set(fullDB[currentYear].map(i => i.sector))];
+    secSel.innerHTML = secs.map(s => `<option value="${s}">${s}</option>`).join('');
 
-function renderChart(item, dataArr) {
-    const ctx = document.getElementById('detailsChart').getContext('2d');
+    switchToEditMode();
+    document.getElementById('mainModal').classList.add('open');
+}
+
+function openPdfModal() { document.getElementById('pdfModal').classList.add('open'); }
+
+function generateExport(type) {
+    closeModal('pdfModal');
+    
+    if (type === 'table-pdf') {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4');
+        doc.setFontSize(16);
+        doc.text(`Relatório FAV Analytics - ${currentYear}`, 14, 20);
+        doc.setFontSize(10);
+        doc.text(`Setor: ${currentSector}`, 14, 28);
+
+        const rows = [];
+        const pdfRowMap = {}; 
+        let currentRowIndex = 0;
+
+        const sectors = currentSector === 'Todos' 
+            ? [...new Set(fullDB[currentYear].map(i => i.sector))].sort() 
+            : [currentSector];
+
+        sectors.forEach(sec => {
+            rows.push([{ 
+                content: sec, 
+                colSpan: 14, 
+                styles: { fillColor: [228, 228, 231], textColor: [24, 24, 27], fontStyle: 'bold', halign: 'left' } 
+            }]);
+            pdfRowMap[currentRowIndex] = null; 
+            currentRowIndex++;
+
+            const items = fullDB[currentYear].filter(i => i.sector === sec);
+            items.forEach(item => {
+                rows.push([
+                    item.name, 
+                    formatVal(item.meta, item.format), 
+                    ...item.data.map(v => formatVal(v, item.format))
+                ]);
+                pdfRowMap[currentRowIndex] = item; 
+                currentRowIndex++;
+            });
+        });
+
+        doc.autoTable({
+            head: [['Indicador', 'Meta', ...months]],
+            body: rows,
+            startY: 35,
+            styles: { 
+                fontSize: 7, 
+                cellPadding: 2, 
+                lineColor: 200, 
+                lineWidth: 0.1,
+                halign: 'center', 
+                valign: 'middle'  
+            },
+            headStyles: { 
+                fillColor: [59, 130, 246],
+                halign: 'center'
+            },
+            didParseCell: function(dataCell) {
+                if (dataCell.section === 'body' && dataCell.column.index >= 2) {
+                    const rowIndex = dataCell.row.index;
+                    const item = pdfRowMap[rowIndex];
+
+                    if (item) {
+                        const monthIndex = dataCell.column.index - 2;
+                        const rawValue = item.data[monthIndex];
+                        const status = getStatus(rawValue, item.meta, item.logic, item.format);
+
+                        if (status === 'good') {
+                            dataCell.cell.styles.fillColor = [16, 185, 129];
+                            dataCell.cell.styles.textColor = [255, 255, 255];
+                        } else if (status === 'bad') {
+                            dataCell.cell.styles.fillColor = [239, 68, 68]; 
+                            dataCell.cell.styles.textColor = [255, 255, 255];
+                        }
+                    }
+                }
+            }
+        });
+        doc.save(`Relatorio_${currentYear}.pdf`);
+    
+    } else if (type === 'excel') {
+        const data = currentSector === 'Todos' ? fullDB[currentYear] : fullDB[currentYear].filter(i => i.sector === currentSector);
+        const wsData = data.map(item => {
+            const row = { "Indicador": item.name, "Setor": item.sector, "Meta": item.meta };
+            months.forEach((m, i) => row[m] = item.data[i] || "");
+            return row;
+        });
+        const ws = XLSX.utils.json_to_sheet(wsData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Dados");
+        XLSX.writeFile(wb, `FAV_Dados_${currentYear}.xlsx`);
+
+    } else if (type === 'visual-pdf') {
+        showToast("Gerando PDF...", "wait");
+        
+        const wasTable = currentView === 'table';
+        if (wasTable) switchView('exec');
+        
+        setTimeout(() => {
+            const element = document.getElementById('charts-area');
+            const options = {
+                scale: 2,
+                useCORS: true, 
+                backgroundColor: '#09090b',
+                logging: false,
+                onclone: function(clonedDoc) {
+                    const clonedChartsArea = clonedDoc.getElementById('charts-area');
+                    if (clonedChartsArea) {
+                        clonedChartsArea.style.padding = '20px';
+                        clonedChartsArea.style.backgroundColor = '#09090b';
+                        const chartCards = clonedChartsArea.querySelectorAll('.chart-card');
+                        chartCards.forEach(card => {
+                            card.style.boxShadow = 'none';
+                            card.style.border = '1px solid #3f3f46';
+                            card.style.backgroundColor = '#18181b';
+                            card.style.overflow = 'visible';
+                        });
+                        const canvases = clonedChartsArea.querySelectorAll('canvas');
+                        canvases.forEach(canvas => {
+                            canvas.style.display = 'block';
+                            canvas.style.width = '100%';
+                            canvas.style.height = '100%';
+                        });
+                    }
+                }
+            };
+            
+            html2canvas(element, options).then(canvas => {
+                const imgData = canvas.toDataURL('image/png', 1.0);
+                const { jsPDF } = window.jspdf;
+                const doc = new jsPDF('l', 'mm', 'a4');
+                const pageWidth = doc.internal.pageSize.getWidth();
+                const pageHeight = doc.internal.pageSize.getHeight();
+                const imgWidth = pageWidth - 20; 
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+                
+                doc.setFillColor(9, 9, 11);
+                doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+                doc.setFontSize(16);
+                doc.setTextColor(255, 255, 255);
+                doc.text(`Dashboard FAV Analytics - ${currentYear}`, pageWidth / 2, 15, { align: 'center' });
+                
+                doc.setFontSize(10);
+                doc.setTextColor(200, 200, 200);
+                doc.text(`Setor: ${currentSector} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 
+                        pageWidth / 2, 22, { align: 'center' });
+                
+                const xPos = (pageWidth - imgWidth) / 2;
+                const yPos = 30; 
+                
+                if (yPos + imgHeight > pageHeight) {
+                    const adjustedHeight = pageHeight - yPos - 10;
+                    const adjustedWidth = (canvas.width * adjustedHeight) / canvas.height;
+                    const adjustedXPos = (pageWidth - adjustedWidth) / 2;
+                    doc.addImage(imgData, 'PNG', adjustedXPos, yPos, adjustedWidth, adjustedHeight);
+                } else {
+                    doc.addImage(imgData, 'PNG', xPos, yPos, imgWidth, imgHeight);
+                }
+                
+                doc.setFontSize(8);
+                doc.setTextColor(100, 100, 100);
+                doc.text('Página 1/1', pageWidth - 10, pageHeight - 10, { align: 'right' });
+                
+                doc.save(`Dashboard_FAV_${currentYear}_${currentSector}.pdf`);
+                
+                if (wasTable) {
+                    setTimeout(() => switchView('table'), 500);
+                }
+                showToast("PDF gerado com sucesso!");
+            }).catch(error => {
+                console.error('Erro ao gerar PDF:', error);
+                showToast("Erro ao gerar PDF!", "error");
+                if (wasTable) switchView('table');
+            });
+        }, 1000);
+    }
+}
+
+function openMonthModal(id, idx) {
+    const item = fullDB[currentYear].find(i => i.id == id);
+    if (!item) return;
+
+    const val = item.data[idx];
+    const status = getStatus(val, item.meta, item.logic, item.format);
+    
+    setText('monthModalTitle', `${months[idx]} - ${item.name}`);
+    setText('monthValue', formatVal(val, item.format));
+    
+    const colors = { good: 'var(--good)', bad: 'var(--bad)', 'empty': '#fff' };
+    document.getElementById('monthValue').style.color = colors[status];
+    
+    const txts = { good: 'Meta Batida', bad: 'Não Batida', 'empty': 'Sem Dados' };
+    setText('monthStatus', txts[status]);
+    document.getElementById('monthStatus').style.color = colors[status];
+    
+    setText('monthMeta', formatVal(item.meta, item.format));
+    setText('monthDelivery', item.dates[idx] ? item.dates[idx].split('-').reverse().join('/') : 'Pendente');
+    
+    document.getElementById('monthModal').classList.add('open');
+}
+
+function renderDetailChart(item) {
+    const ctx = document.getElementById('detailChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
-    const cData = dataArr.map(v => { if (item.format === 'time') return timeToDecimal(v); if (item.format === 'percent' && Math.abs(v) <= 1 && v !== 0) return v * 100; return v; });
-    let cMeta = item.meta;
-    if (item.format === 'time') cMeta = timeToDecimal(item.meta);
-    else if (item.format === 'percent' && Math.abs(item.meta) <= 1 && item.meta !== 0) cMeta = item.meta * 100;
-    const gradient = ctx.createLinearGradient(0, 0, 0, 180);
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.3)');
-    gradient.addColorStop(1, 'rgba(59, 130, 246, 0)');
-    chartInstance = new Chart(ctx, { type: 'line', data: { labels: months, datasets: [{ label: 'Real', data: cData, borderColor: '#3b82f6', backgroundColor: gradient, borderWidth: 2, fill: true, tension: 0.4, pointRadius: 3 }, { label: 'Meta', data: Array(12).fill(cMeta), borderColor: '#ef4444', borderWidth: 2, borderDash: [4, 4], pointRadius: 0 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { y: { grid: { color: '#27272a' }, ticks: { color: '#555', font: { size: 10 } } }, x: { grid: { display: false }, ticks: { color: '#555', font: { size: 10 } } } }, plugins: { legend: { display: false } } } });
+    
+    const cData = item.data.map(v => {
+        if(v===null||v==="") return null;
+        let n = item.format==='time'?timeToDec(v):parseFloat(v.replace(',','.'));
+        return isNaN(n) ? null : n; 
+    });
+    
+    const cMeta = item.format==='time' ? timeToDec(item.meta) : parseFloat(item.meta.replace(',','.'));
+    
+    // Gradiente bonito para o preenchimento
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Azul forte no topo
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)'); // Transparente embaixo
+
+    chartInstance = new Chart(ctx, { 
+        type: 'line', 
+        data: { 
+            labels: months, 
+            datasets: [{ 
+                label: 'Real', 
+                data: cData, 
+                borderColor: '#3b82f6', 
+                backgroundColor: gradient,
+                borderWidth: 3,
+                tension: 0.3, // Curva suave
+                fill: true,   // Preenchimento ativado
+                pointRadius: 4,
+                pointBackgroundColor: '#18181b',
+                pointBorderColor: '#3b82f6'
+            }, { 
+                label: 'Meta', 
+                data: Array(12).fill(cMeta), 
+                borderColor: '#ef4444', 
+                borderDash: [5,5], 
+                pointRadius: 0,
+                borderWidth: 2
+            }] 
+        }, 
+        options: { 
+            responsive: true, 
+            maintainAspectRatio: false, // Permite esticar e ocupar espaço
+            layout: {
+                padding: { left: 0, right: 0, top: 10, bottom: 0 } // Remove margens
+            },
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { 
+                    grid: { display: false },
+                    ticks: { color: '#a1a1aa', font: { size: 10 } }
+                },
+                y: {
+                    grid: { color: '#27272a' },
+                    ticks: { color: '#a1a1aa' }
+                }
+            }
+        } 
+    });
 }
 
-function populateSectorSelect() {
-    const sel = document.getElementById('inp-sector');
-    const unique = [...new Set(getDataForCurrentYear().map(i => i.sector))].sort();
-    sel.innerHTML = '';
-    if (unique.length === 0) sel.innerHTML = '<option value="Geral">Geral</option>';
-    unique.forEach(s => sel.innerHTML += `<option value="${s}">${s}</option>`);
-}
-
-function toggleNewSector() {
-    isNewSectorMode = !isNewSectorMode;
-    document.getElementById('inp-sector').style.display = isNewSectorMode ? 'none' : 'block';
-    document.getElementById('inp-new-sector').style.display = isNewSectorMode ? 'block' : 'none';
-}
-
-function renderMetaHistory(history) {
-    const c = document.getElementById('meta-history-container');
-    if (!history || !history.length) { c.innerHTML = '<div style="font-size:0.7rem; color:#555; padding:5px">Sem histórico</div>'; return; }
-    let h = '';
-    history.forEach(x => h += `<div class="meta-history-item"><span>${x.date}</span><span>${x.value}</span></div>`);
-    c.innerHTML = h;
-}
-
-function toggleMetaHistory() {
-    const el = document.getElementById('meta-history-container');
-    el.style.display = el.style.display === 'block' ? 'none' : 'block';
-}
-
-function deleteMetric() {
-    if (confirm("Excluir?")) {
-        fullDB[CURRENT_YEAR] = fullDB[CURRENT_YEAR].filter(i => i.id !== currentMetricId);
-        closeModal();
-        renderApp('Todos');
-        saveToDrive();
+function temDadosValidos(item) {
+    for (let i = 0; i < item.data.length; i++) {
+        const val = item.data[i];
+        if (val !== null && val !== undefined) {
+            if (typeof val === 'string') {
+                const trimmed = val.trim();
+                if (trimmed !== "" && trimmed !== "null" && trimmed !== "undefined" && trimmed !== "NaN") {
+                    return true;
+                }
+            } else {
+                return true;
+            }
+        }
     }
+    return false;
 }
 
-function changeDeadlineConfig() {
-    const n = prompt("Novo dia limite:", DEADLINE_DAY);
-    if (n && !isNaN(n)) {
-        DEADLINE_DAY = parseInt(n);
-        localStorage.setItem('fav_deadline', DEADLINE_DAY);
-        renderApp(document.querySelector('.nav-item.active') ? document.querySelector('.nav-item.active').innerText.trim() : 'Todos');
+// -------------------------------------------------------------
+// FUNÇÕES CRÍTICAS CORRIGIDAS
+// -------------------------------------------------------------
+
+function timeToDec(t) {
+    if (!t || typeof t !== 'string') return NaN;
+    const match = t.match(/(\d{1,2}):(\d{2})/);
+    if (match) {
+        const hours = parseFloat(match[1]);
+        const minutes = parseFloat(match[2]);
+        return hours + (minutes / 60);
     }
+    return NaN; 
 }
 
-function formatVal(val, fmt) { if (val === null || val === "") return ""; if (fmt === 'time') return val; const num = parseFloat(val); if (fmt === 'percent') { const p = (Math.abs(num) <= 1 && num !== 0) ? num * 100 : num; return parseFloat(p.toFixed(2)).toLocaleString('pt-BR') + '%'; } return num.toLocaleString('pt-BR', { maximumFractionDigits: 2 }); }
-
-function getStatus(val, meta, logic, fmt) {
-    if (val === null || val === "") return "";
-    let v = val;
-    let m = meta;
-    if (fmt === 'time') {
-        v = timeToDecimal(val);
-        m = timeToDecimal(meta);
+function formatVal(v, f) {
+    if (v === null || v === undefined || v === "" || v === "NaN") {
+        return "-";
+    }
+    
+    if (f === 'time') {
+        let str = String(v);
+        const match = str.match(/(\d{1,2}):(\d{2})/);
+        if (match) {
+             return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
+        }
+        return str;
+    }
+    
+    let num;
+    if (typeof v === 'string') {
+        const clean = v.replace(/[^\d.,\-]/g, '').replace(',', '.');
+        num = parseFloat(clean);
     } else {
-        v = parseFloat(val);
-        m = parseFloat(meta);
-        if (fmt === 'percent' && Math.abs(m) <= 1 && Math.abs(v) > 1) m = m * 100;
+        num = parseFloat(v);
     }
-    if (logic === 'maior') return v >= m ? 'good' : 'bad';
-    return v <= m ? 'good' : 'bad';
+    if (isNaN(num)) {
+        return "-";
+    }
+    
+    if (f === 'percent') {
+        return num.toLocaleString('pt-BR', { maximumFractionDigits: 3 }) + '%';
+    }
+    
+    return num.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 }
 
-function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
-
-function showToast(msg) {
-    const t = document.getElementById('toast');
-    t.innerHTML = `<i data-lucide="check-circle"></i> <span>${msg}</span>`;
-    lucide.createIcons();
-    t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 3000);
-}
+// Helpers diversos
+function populateSectorFilter() { const d = fullDB[currentYear]||[]; const s = ['Todos', ...new Set(d.map(i => i.sector))].sort(); const el = document.getElementById('sector-filter'); el.innerHTML = s.map(x => `<option value="${x}">${x}</option>`).join(''); el.value = currentSector; }
+function toggleNewSector() { isNewSectorMode = !isNewSectorMode; document.getElementById('inp-sector').style.display = isNewSectorMode ? 'none':'block'; document.getElementById('inp-new-sector').style.display = isNewSectorMode ? 'block':'none'; }
+function switchToEditMode() { document.getElementById('mode-view').style.display='none'; document.getElementById('footer-view').style.display='none'; document.getElementById('mode-edit').style.display='block'; document.getElementById('footer-edit').style.display='flex'; if(currentMetricId) setText('modalTitle', 'Editar Indicador'); }
+function switchToViewMode() { document.getElementById('mode-view').style.display='block'; document.getElementById('footer-view').style.display='flex'; document.getElementById('mode-edit').style.display='none'; document.getElementById('footer-edit').style.display='none'; if(currentMetricId) setText('modalTitle', fullDB[currentYear].find(i=>i.id==currentMetricId).name); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function setSector(val) { currentSector = val; renderApp(); }
+function setYear(y) { currentYear = y; renderApp(); }
+function switchView(v) { currentView = v; document.getElementById('view-table').style.display = v==='table'?'block':'none'; document.getElementById('view-exec').style.display = v==='exec'?'block':'none'; document.getElementById('btn-view-table').classList.toggle('active', v==='table'); document.getElementById('btn-view-exec').classList.toggle('active', v==='exec'); renderApp(); }
+function toggleLoading(s) { document.getElementById('loading-overlay').style.display=s?'flex':'none'; }
+function showToast(m, t) { const el=document.getElementById('toast'); el.innerText=m; el.className=`toast ${t}`; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),3000); }
+function setText(id, txt) { const el = document.getElementById(id); if(el) el.innerText = txt; }
+function configDeadline() { const n = prompt("Novo dia limite (Ex: 15):", deadlineDay); if(n && !isNaN(n)) { deadlineDay = parseInt(n); localStorage.setItem('fav_deadline', deadlineDay); renderApp(); } }
+function importFrom2025() { if(confirm("Deseja importar?")) { fullDB['2026'] = fullDB['2025'].map(i => ({...i, id: Date.now()+Math.random(), data: Array(12).fill(null), dates: Array(12).fill(null)})); saveData(); renderApp(); } }
+function deleteItem() { if(confirm("Excluir?")) { fullDB[currentYear] = fullDB[currentYear].filter(i=>i.id!=currentMetricId); saveData(); closeModal('mainModal'); renderApp(); } }
