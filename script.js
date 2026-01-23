@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - CORE V85 FINAL
- * Features: Meta com Lógica na Tabela + Cascata + Fix Ícone + Unidades + Tema
+/* * FAV ANALYTICS - CORE V89 FINAL
+ * Features: Fix Animação Ícone (Cleanup) + Meta Negrito + Cascata + Centralização
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
@@ -61,12 +61,12 @@ async function saveData() {
     }
 }
 
-// --- TEMA (ANIMAÇÃO SÓ NO CLIQUE) ---
+// --- TEMA (ANIMAÇÃO CONTROLADA) ---
 function toggleTheme() {
     currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
     localStorage.setItem('fav_theme', currentTheme);
     
-    // animate = true, pois foi uma ação do usuário
+    // animate = true, pois foi uma ação do usuário (clique)
     applyTheme(currentTheme, true);
     
     // Recarrega gráficos se estiverem visíveis para pegar novas cores
@@ -82,12 +82,21 @@ function applyTheme(theme, animate = false) {
     if (btn) {
         const iconName = theme === 'light' ? 'moon' : 'sun';
         
-        // Se animate for true, adicionamos a classe .icon-spin
-        const animClass = animate ? 'class="icon-spin"' : '';
+        // Adiciona a classe .icon-spin se animate for true
+        const className = animate ? 'icon-spin' : '';
         
-        // Recria o HTML para forçar o reinício da animação CSS
-        btn.innerHTML = `<i id="theme-icon" data-lucide="${iconName}" ${animClass}></i>`;
+        // Recria o HTML para o Lucide processar
+        btn.innerHTML = `<i id="theme-icon" class="${className}" data-lucide="${iconName}"></i>`;
         lucide.createIcons();
+
+        // IMPORTANTE: Remove a classe de animação após 600ms.
+        // Isso impede que o ícone gire novamente ao trocar de ano (renderApp).
+        if (animate) {
+            setTimeout(() => {
+                const icon = document.getElementById('theme-icon');
+                if (icon) icon.classList.remove('icon-spin');
+            }, 600);
+        }
     }
 }
 
@@ -247,7 +256,7 @@ function updateKPIs(data) {
     setText('kpi-crit', countCrit);
 }
 
-// --- TABELA (COM META DETALHADA E CASCATA) ---
+// --- TABELA (META DETALHADA E CASCATA) ---
 function renderTable(data) {
     const tbody = document.getElementById('table-body');
     const emptyState = document.getElementById('empty-state');
@@ -281,7 +290,7 @@ function renderTable(data) {
             tr.style.animationDelay = `${delayCounter * 30}ms`;
             delayCounter++;
             
-            // Lógica para exibição embaixo da meta
+            // Lógica detalhada embaixo da meta
             const logicLabel = item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓';
 
             let html = `
@@ -289,7 +298,7 @@ function renderTable(data) {
                 <td class="col-meta" onclick="openMainModal(${item.id})">
                     <div style="display:flex; flex-direction:column; align-items:center; justify-content:center;">
                         <span>${formatVal(item.meta, item.format)}</span>
-                        <span style="font-size:0.55rem; opacity:0.7; margin-top:2px; font-weight:400; text-transform:uppercase; letter-spacing:0.5px;">${logicLabel}</span>
+                        <span style="font-size:0.55rem; opacity:0.8; margin-top:2px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">${logicLabel}</span>
                     </div>
                 </td>
             `;
@@ -316,11 +325,11 @@ function renderTable(data) {
 function renderExecutiveCharts(data) {
     if (currentView !== 'exec') return;
     
-    // Aplica cascata nos cards
+    // Aplica cascata nos cartões de gráfico
     const cards = document.querySelectorAll('.chart-card');
     cards.forEach((card, i) => {
         card.classList.remove('cascade-item'); 
-        void card.offsetWidth; // Reflow
+        void card.offsetWidth; // Force Reflow para reiniciar animação
         card.classList.add('cascade-item');
         card.style.animationDelay = `${i * 100}ms`;
     });
@@ -992,7 +1001,6 @@ function renderDetailChart(item) {
     
     const cMeta = item.format==='time' ? timeToDec(item.meta) : parseFloat(item.meta.replace(',','.'));
     
-    // Gradiente bonito para o preenchimento
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
     gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); 
     gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)'); 
