@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - CORE V73 FINAL
- * Features: Layout V60 + Correção Lógica de Atraso (Janela de Validade Rígida)
+/* * FAV ANALYTICS - CORE V76 FINAL
+ * Features: Novas Unidades de Medida + Toggle Setor Imóvel + Lógica de Data Rígida
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
@@ -77,7 +77,7 @@ function renderApp(filter = currentSector) {
     lucide.createIcons();
 }
 
-// --- NOVA LÓGICA DE PONTUALIDADE (JANELA DE VALIDADE) ---
+// --- LÓGICA DE PONTUALIDADE (JANELA DE VALIDADE RÍGIDA) ---
 function checkOnTime(dateStr, monthIdx) {
     if (!dateStr) return false;
     
@@ -85,11 +85,10 @@ function checkOnTime(dateStr, monthIdx) {
     const delivery = new Date(dateStr + "T12:00:00");
     const curYear = parseInt(currentYear);
 
-    // 1. Definir Data Mínima: 1º dia do Mês de Referência
-    // Isso impede que um relatório de Jan/2026 (digitado errada como 2025) fique verde.
+    // 1. Data Mínima: 1º dia do Mês de Referência (impede ano errado do passado)
     const minDate = new Date(curYear, monthIdx, 1, 0, 0, 0);
 
-    // 2. Definir Data Limite: Dia 'deadlineDay' do Mês Seguinte
+    // 2. Data Limite: Dia 'deadlineDay' do Mês Seguinte
     let limitYear = curYear;
     let limitMonth = monthIdx + 1; 
     
@@ -100,9 +99,7 @@ function checkOnTime(dateStr, monthIdx) {
     
     const limitDate = new Date(limitYear, limitMonth, deadlineDay, 23, 59, 59);
     
-    // Regra Rígida: A entrega deve acontecer DENTRO da janela (Inicio Mês Referência <-> Prazo Final)
-    // Se for antes (ano errado) = False (Vermelho/Erro)
-    // Se for depois (atraso) = False (Vermelho)
+    // Regra: Entrega deve ser >= Inicio do Mês e <= Prazo Final
     return delivery >= minDate && delivery <= limitDate;
 }
 
@@ -114,22 +111,13 @@ function getStatus(val, meta, logic, fmt) {
     
     if (fmt === 'time') {
         v = timeToDec(val);
-    } else {
-        if (typeof val === 'string') {
-            v = parseFloat(val.replace(',', '.'));
-        } else {
-            v = parseFloat(val);
-        }
-    }
-    
-    if (fmt === 'time') {
         m = timeToDec(meta);
     } else {
-        if (typeof meta === 'string') {
-            m = parseFloat(meta.replace(',', '.'));
-        } else {
-            m = parseFloat(meta);
-        }
+        // Limpeza básica para garantir que é número
+        let sVal = String(val).replace(',', '.');
+        let sMeta = String(meta).replace(',', '.');
+        v = parseFloat(sVal);
+        m = parseFloat(sMeta);
     }
     
     if (isNaN(v) || isNaN(m)) return "empty";
@@ -139,6 +127,84 @@ function getStatus(val, meta, logic, fmt) {
     } else {
         return v <= m ? 'good' : 'bad';
     }
+}
+
+// --- FORMATADORES (ATUALIZADO COM NOVAS UNIDADES) ---
+function formatVal(v, f) {
+    if (v === null || v === undefined || v === "" || v === "NaN") {
+        return "-";
+    }
+    
+    // Tratamento de Hora
+    if (f === 'time') {
+        let str = String(v);
+        const match = str.match(/(\d{1,2}):(\d{2})/);
+        if (match) {
+             return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
+        }
+        return str;
+    }
+    
+    // Conversão para Número
+    let num;
+    if (typeof v === 'string') {
+        const clean = v.replace(/[^\d.,\-]/g, '').replace(',', '.');
+        num = parseFloat(clean);
+    } else {
+        num = parseFloat(v);
+    }
+    
+    if (isNaN(num)) return "-";
+    
+    // Formatação Numérica Padrão (Brasil)
+    const br = num.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+
+    // Switch case para as unidades
+    switch (f) {
+        case 'money': 
+            return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        case 'percent': 
+            return num.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+        case 'minutes': 
+            return br + ' min';
+        case 'days': 
+            return br + ' dias';
+        case 'years': 
+            return br + ' anos';
+        case 'm3': 
+            return br + ' m³';
+        case 'container': 
+            return br + ' cont.';
+        case 'liters': 
+            return br + ' L';
+        case 'ml': 
+            return br + ' ml';
+        case 'kg': 
+            return br + ' kg';
+        case 'kwh': 
+            return br + ' kWh';
+        case 'gas': 
+            return br + ' bot.';
+        case 'cm': 
+            return br + ' cm';
+        case 'package': 
+            return br + ' pct';
+        case 'patients': 
+            return br + ' pac.';
+        default: 
+            return br; // 'number' cai aqui
+    }
+}
+
+function timeToDec(t) {
+    if (!t || typeof t !== 'string') return NaN;
+    const match = t.match(/(\d{1,2}):(\d{2})/);
+    if (match) {
+        const hours = parseFloat(match[1]);
+        const minutes = parseFloat(match[2]);
+        return hours + (minutes / 60);
+    }
+    return NaN; 
 }
 
 // --- KPIs ---
@@ -160,7 +226,7 @@ function updateKPIs(data) {
             }
         });
 
-        // Pontualidade (Usa nova lógica checkOnTime)
+        // Pontualidade
         if (item.dates) {
             item.dates.forEach((d, i) => {
                 if (item.data[i] !== null && item.data[i] !== "") {
@@ -386,11 +452,7 @@ function renderStatusChart(data) {
             labels: ['Batido', 'Não Batido', 'S/ Dados'],
             datasets: [{
                 data: [batido, naoBatido, naoContabilizado],
-                backgroundColor: [
-                    '#10b981',  // Verde
-                    '#ef4444',  // Vermelho
-                    '#6b7280'   // Cinza
-                ],
+                backgroundColor: ['#10b981', '#ef4444', '#6b7280'],
                 borderWidth: 0,
                 hoverOffset: 4
             }]
@@ -952,56 +1014,33 @@ function temDadosValidos(item) {
     return false;
 }
 
-// -------------------------------------------------------------
-// FUNÇÕES CRÍTICAS CORRIGIDAS
-// -------------------------------------------------------------
-
-function timeToDec(t) {
-    if (!t || typeof t !== 'string') return NaN;
-    const match = t.match(/(\d{1,2}):(\d{2})/);
-    if (match) {
-        const hours = parseFloat(match[1]);
-        const minutes = parseFloat(match[2]);
-        return hours + (minutes / 60);
-    }
-    return NaN; 
-}
-
-function formatVal(v, f) {
-    if (v === null || v === undefined || v === "" || v === "NaN") {
-        return "-";
-    }
-    
-    if (f === 'time') {
-        let str = String(v);
-        const match = str.match(/(\d{1,2}):(\d{2})/);
-        if (match) {
-             return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
-        }
-        return str;
-    }
-    
-    let num;
-    if (typeof v === 'string') {
-        const clean = v.replace(/[^\d.,\-]/g, '').replace(',', '.');
-        num = parseFloat(clean);
-    } else {
-        num = parseFloat(v);
-    }
-    if (isNaN(num)) {
-        return "-";
-    }
-    
-    if (f === 'percent') {
-        return num.toLocaleString('pt-BR', { maximumFractionDigits: 3 }) + '%';
-    }
-    
-    return num.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
-}
-
 // Helpers diversos
 function populateSectorFilter() { const d = fullDB[currentYear]||[]; const s = ['Todos', ...new Set(d.map(i => i.sector))].sort(); const el = document.getElementById('sector-filter'); el.innerHTML = s.map(x => `<option value="${x}">${x}</option>`).join(''); el.value = currentSector; }
-function toggleNewSector() { isNewSectorMode = !isNewSectorMode; document.getElementById('inp-sector').style.display = isNewSectorMode ? 'none':'block'; document.getElementById('inp-new-sector').style.display = isNewSectorMode ? 'block':'none'; }
+
+// --- TOGGLE SETOR IMÓVEL (SWAP) ---
+function toggleNewSector() { 
+    isNewSectorMode = !isNewSectorMode; 
+    
+    // Seletores
+    const selectEl = document.getElementById('inp-sector');
+    const inputEl = document.getElementById('inp-new-sector');
+    const btnEl = document.getElementById('btn-toggle-sector'); // ID do texto (Novo?)
+
+    if(isNewSectorMode) {
+        // Esconde Select, Mostra Input
+        selectEl.style.display = 'none';
+        inputEl.style.display = 'block';
+        if(btnEl) btnEl.innerText = "(Voltar)";
+        inputEl.focus();
+    } else {
+        // Mostra Select, Esconde Input
+        selectEl.style.display = 'block';
+        inputEl.style.display = 'none';
+        if(btnEl) btnEl.innerText = "(Novo?)";
+        inputEl.value = ""; // Limpa input
+    }
+}
+
 function switchToEditMode() { document.getElementById('mode-view').style.display='none'; document.getElementById('footer-view').style.display='none'; document.getElementById('mode-edit').style.display='block'; document.getElementById('footer-edit').style.display='flex'; if(currentMetricId) setText('modalTitle', 'Editar Indicador'); }
 function switchToViewMode() { document.getElementById('mode-view').style.display='block'; document.getElementById('footer-view').style.display='flex'; document.getElementById('mode-edit').style.display='none'; document.getElementById('footer-edit').style.display='none'; if(currentMetricId) setText('modalTitle', fullDB[currentYear].find(i=>i.id==currentMetricId).name); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }

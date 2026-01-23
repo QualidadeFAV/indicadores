@@ -176,7 +176,7 @@
                     
                     <div class="form-grid">
                         <div class="form-group">
-                            <label>ID</label>
+                            <label>ID Sistema</label>
                             <input type="text" value="AUTO" class="input-field" disabled style="text-align:center; opacity:0.5;">
                         </div>
 
@@ -186,11 +186,9 @@
                         </div>
 
                         <div class="form-group">
-                            <label>Setor <span onclick="toggleNewSector()" style="cursor:pointer; color:var(--accent); float:right; font-size:0.65rem;">(Novo?)</span></label>
-                            <div style="position:relative">
-                                <select id="inp-sector" class="input-field"></select>
-                                <input type="text" id="inp-new-sector" class="input-field" style="display:none; position:absolute; top:0; left:0;" placeholder="Nome do Setor">
-                            </div>
+                            <label>Setor <span id="btn-toggle-sector" onclick="toggleNewSector()" style="cursor:pointer; color:var(--accent); float:right; font-size:0.65rem; font-weight:600;">(Novo?)</span></label>
+                            <select id="inp-sector" class="input-field"></select>
+                            <input type="text" id="inp-new-sector" class="input-field" style="display:none;" placeholder="Nome do Setor">
                         </div>
 
                         <div class="form-group">
@@ -201,18 +199,39 @@
                         <div class="form-group">
                             <label>Lógica</label>
                             <select id="inp-logic" class="input-field">
-                                <option value="maior">Maior (↑)</option>
-                                <option value="menor">Menor (↓)</option>
+                                <option value="maior">Maior Melhor (↑)</option>
+                                <option value="menor">Menor Melhor (↓)</option>
                             </select>
                         </div>
 
                         <div class="form-group">
-                            <label>Formato</label>
+                            <label>Unidade de Medida</label>
                             <select id="inp-format" class="input-field">
-                                <option value="number">Numérico</option>
-                                <option value="percent">Porcentagem (%)</option>
-                                <option value="time">Tempo (00:00)</option>
-                                <option value="money">Moeda (R$)</option>
+                                <optgroup label="Básicos">
+                                    <option value="number">Número</option>
+                                    <option value="money">Reais</option>
+                                    <option value="percent">Percentual</option>
+                                    <option value="patients">Pacientes</option>
+                                </optgroup>
+                                <optgroup label="Tempo">
+                                    <option value="time">Horas</option>
+                                    <option value="minutes">Minutos</option>
+                                    <option value="days">Dias</option>
+                                    <option value="years">Anos</option>
+                                </optgroup>
+                                <optgroup label="Volume e Peso">
+                                    <option value="container">Contêiner - 1,2 m³</option>
+                                    <option value="m3">Metro Cúbico</option>
+                                    <option value="liters">Litros</option>
+                                    <option value="ml">Mililitros</option>
+                                    <option value="kg">Quilograma</option>
+                                </optgroup>
+                                <optgroup label="Outros">
+                                    <option value="kwh">Quilowatt/hora</option>
+                                    <option value="gas">Botijão</option>
+                                    <option value="cm">Centímetros</option>
+                                    <option value="package">Pacote</option>
+                                </optgroup>
                             </select>
                         </div>
                     </div>
@@ -304,6 +323,4 @@
 
     <script src="script.js"></script>
 </body>
-
 </html>
-
