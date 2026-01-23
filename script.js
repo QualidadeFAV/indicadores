@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - CORE V89 FINAL
- * Features: Fix Animação Ícone (Cleanup) + Meta Negrito + Cascata + Centralização
+/* * FAV ANALYTICS - CORE V92 FINAL
+ * Features: Fix Flicker Modal + Todas as correções anteriores (V89/V91)
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
@@ -89,8 +89,7 @@ function applyTheme(theme, animate = false) {
         btn.innerHTML = `<i id="theme-icon" class="${className}" data-lucide="${iconName}"></i>`;
         lucide.createIcons();
 
-        // IMPORTANTE: Remove a classe de animação após 600ms.
-        // Isso impede que o ícone gire novamente ao trocar de ano (renderApp).
+        // Remove a classe de animação após 600ms para evitar loop ao trocar ano
         if (animate) {
             setTimeout(() => {
                 const icon = document.getElementById('theme-icon');
@@ -637,13 +636,15 @@ function openMainModal(id) {
     }
 
     renderTimeline(item);
-    renderDetailChart(item);
+    // CORREÇÃO: Removi a chamada duplicada que causava o flicker
+    // renderDetailChart(item); <-- Removido
     populateEditForm(item);
 
     switchToViewMode();
     document.getElementById('mainModal').classList.add('open');
     
-    setTimeout(() => renderDetailChart(item), 50);
+    // A única chamada válida, após o modal abrir
+    setTimeout(() => renderDetailChart(item), 100); 
 }
 
 function renderTimeline(item) {
