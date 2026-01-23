@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - CORE V76 FINAL
- * Features: Novas Unidades de Medida + Toggle Setor Imóvel + Lógica de Data Rígida
+/* * FAV ANALYTICS - CORE V85 FINAL
+ * Features: Meta com Lógica na Tabela + Cascata + Fix Ícone + Unidades + Tema
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
@@ -12,6 +12,8 @@ let fullDB = { "2025": [], "2026": [] };
 let currentYear = '2025';
 let currentSector = 'Todos';
 let currentView = 'table';
+// Carrega tema salvo ou usa 'dark' como padrão
+let currentTheme = localStorage.getItem('fav_theme') || 'dark';
 let deadlineDay = parseInt(localStorage.getItem('fav_deadline')) || 15;
 let charts = {}; 
 let chartInstance = null;
@@ -21,6 +23,8 @@ let statusChartMode = 'last';
 
 // --- INICIALIZAÇÃO ---
 window.onload = () => {
+    // animate = false no load inicial para não girar o ícone sem motivo
+    applyTheme(currentTheme, false); 
     loadData();
 };
 
@@ -57,6 +61,36 @@ async function saveData() {
     }
 }
 
+// --- TEMA (ANIMAÇÃO SÓ NO CLIQUE) ---
+function toggleTheme() {
+    currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem('fav_theme', currentTheme);
+    
+    // animate = true, pois foi uma ação do usuário
+    applyTheme(currentTheme, true);
+    
+    // Recarrega gráficos se estiverem visíveis para pegar novas cores
+    if (currentView === 'exec') {
+        renderApp(); 
+    }
+}
+
+function applyTheme(theme, animate = false) {
+    document.body.setAttribute('data-theme', theme);
+    
+    const btn = document.querySelector('button[onclick="toggleTheme()"]');
+    if (btn) {
+        const iconName = theme === 'light' ? 'moon' : 'sun';
+        
+        // Se animate for true, adicionamos a classe .icon-spin
+        const animClass = animate ? 'class="icon-spin"' : '';
+        
+        // Recria o HTML para forçar o reinício da animação CSS
+        btn.innerHTML = `<i id="theme-icon" data-lucide="${iconName}" ${animClass}></i>`;
+        lucide.createIcons();
+    }
+}
+
 // --- RENDERIZAÇÃO ---
 function renderApp(filter = currentSector) {
     populateSectorFilter();
@@ -77,18 +111,17 @@ function renderApp(filter = currentSector) {
     lucide.createIcons();
 }
 
-// --- LÓGICA DE PONTUALIDADE (JANELA DE VALIDADE RÍGIDA) ---
+// --- LÓGICA DE PONTUALIDADE (DATA RÍGIDA) ---
 function checkOnTime(dateStr, monthIdx) {
     if (!dateStr) return false;
     
-    // Data da Entrega (Input)
     const delivery = new Date(dateStr + "T12:00:00");
     const curYear = parseInt(currentYear);
 
-    // 1. Data Mínima: 1º dia do Mês de Referência (impede ano errado do passado)
+    // Data Mínima: 1º dia do Mês de Referência
     const minDate = new Date(curYear, monthIdx, 1, 0, 0, 0);
 
-    // 2. Data Limite: Dia 'deadlineDay' do Mês Seguinte
+    // Data Limite: Dia 'deadlineDay' do Mês Seguinte
     let limitYear = curYear;
     let limitMonth = monthIdx + 1; 
     
@@ -99,11 +132,10 @@ function checkOnTime(dateStr, monthIdx) {
     
     const limitDate = new Date(limitYear, limitMonth, deadlineDay, 23, 59, 59);
     
-    // Regra: Entrega deve ser >= Inicio do Mês e <= Prazo Final
     return delivery >= minDate && delivery <= limitDate;
 }
 
-// --- LÓGICA DE STATUS (PERFORMANCE) ---
+// --- STATUS ---
 function getStatus(val, meta, logic, fmt) {
     if (val === null || val === "" || val === "NaN") return "empty";
     
@@ -113,7 +145,6 @@ function getStatus(val, meta, logic, fmt) {
         v = timeToDec(val);
         m = timeToDec(meta);
     } else {
-        // Limpeza básica para garantir que é número
         let sVal = String(val).replace(',', '.');
         let sMeta = String(meta).replace(',', '.');
         v = parseFloat(sVal);
@@ -129,23 +160,17 @@ function getStatus(val, meta, logic, fmt) {
     }
 }
 
-// --- FORMATADORES (ATUALIZADO COM NOVAS UNIDADES) ---
+// --- FORMATADORES ---
 function formatVal(v, f) {
-    if (v === null || v === undefined || v === "" || v === "NaN") {
-        return "-";
-    }
+    if (v === null || v === undefined || v === "" || v === "NaN") return "-";
     
-    // Tratamento de Hora
     if (f === 'time') {
         let str = String(v);
         const match = str.match(/(\d{1,2}):(\d{2})/);
-        if (match) {
-             return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
-        }
+        if (match) return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
         return str;
     }
     
-    // Conversão para Número
     let num;
     if (typeof v === 'string') {
         const clean = v.replace(/[^\d.,\-]/g, '').replace(',', '.');
@@ -156,54 +181,31 @@ function formatVal(v, f) {
     
     if (isNaN(num)) return "-";
     
-    // Formatação Numérica Padrão (Brasil)
     const br = num.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
-    // Switch case para as unidades
     switch (f) {
-        case 'money': 
-            return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        case 'percent': 
-            return num.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
-        case 'minutes': 
-            return br + ' min';
-        case 'days': 
-            return br + ' dias';
-        case 'years': 
-            return br + ' anos';
-        case 'm3': 
-            return br + ' m³';
-        case 'container': 
-            return br + ' cont.';
-        case 'liters': 
-            return br + ' L';
-        case 'ml': 
-            return br + ' ml';
-        case 'kg': 
-            return br + ' kg';
-        case 'kwh': 
-            return br + ' kWh';
-        case 'gas': 
-            return br + ' bot.';
-        case 'cm': 
-            return br + ' cm';
-        case 'package': 
-            return br + ' pct';
-        case 'patients': 
-            return br + ' pac.';
-        default: 
-            return br; // 'number' cai aqui
+        case 'money': return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        case 'percent': return num.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+        case 'minutes': return br + ' min';
+        case 'days': return br + ' dias';
+        case 'years': return br + ' anos';
+        case 'm3': return br + ' m³';
+        case 'liters': return br + ' L';
+        case 'ml': return br + ' ml';
+        case 'kg': return br + ' kg';
+        case 'kwh': return br + ' kWh';
+        case 'gas': return br + ' bot.';
+        case 'cm': return br + ' cm';
+        case 'package': return br + ' pct';
+        case 'patients': return br + ' pac.';
+        default: return br;
     }
 }
 
 function timeToDec(t) {
     if (!t || typeof t !== 'string') return NaN;
     const match = t.match(/(\d{1,2}):(\d{2})/);
-    if (match) {
-        const hours = parseFloat(match[1]);
-        const minutes = parseFloat(match[2]);
-        return hours + (minutes / 60);
-    }
+    if (match) return parseFloat(match[1]) + (parseFloat(match[2]) / 60);
     return NaN; 
 }
 
@@ -245,7 +247,7 @@ function updateKPIs(data) {
     setText('kpi-crit', countCrit);
 }
 
-// --- TABELA ---
+// --- TABELA (COM META DETALHADA E CASCATA) ---
 function renderTable(data) {
     const tbody = document.getElementById('table-body');
     const emptyState = document.getElementById('empty-state');
@@ -262,21 +264,34 @@ function renderTable(data) {
     emptyState.style.display = 'none';
 
     const sectors = currentSector === 'Todos' ? [...new Set(data.map(i => i.sector))].sort() : [currentSector];
+    let delayCounter = 0;
 
     sectors.forEach(sec => {
         const items = data.filter(i => i.sector === sec);
         if (items.length === 0) return;
 
         if (currentSector === 'Todos') {
-            tbody.innerHTML += `<tr class="sector-header"><td colspan="14">${sec}</td></tr>`;
+            tbody.innerHTML += `<tr class="sector-header cascade-item" style="animation-delay: ${delayCounter * 30}ms"><td colspan="14">${sec}</td></tr>`;
+            delayCounter++;
         }
 
         items.forEach(item => {
             const tr = document.createElement('tr');
+            tr.className = 'cascade-item';
+            tr.style.animationDelay = `${delayCounter * 30}ms`;
+            delayCounter++;
             
+            // Lógica para exibição embaixo da meta
+            const logicLabel = item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓';
+
             let html = `
                 <td class="col-name" onclick="openMainModal(${item.id})">${item.name}</td>
-                <td class="col-meta">${formatVal(item.meta, item.format)}</td>
+                <td class="col-meta" onclick="openMainModal(${item.id})">
+                    <div style="display:flex; flex-direction:column; align-items:center; justify-content:center;">
+                        <span>${formatVal(item.meta, item.format)}</span>
+                        <span style="font-size:0.55rem; opacity:0.7; margin-top:2px; font-weight:400; text-transform:uppercase; letter-spacing:0.5px;">${logicLabel}</span>
+                    </div>
+                </td>
             `;
 
             for (let i = 0; i < 12; i++) {
@@ -297,18 +312,40 @@ function renderTable(data) {
     });
 }
 
-// --- GRÁFICOS EXECUTIVOS ---
+// --- GRÁFICOS EXECUTIVOS (CORES DINÂMICAS + CASCATA) ---
 function renderExecutiveCharts(data) {
     if (currentView !== 'exec') return;
+    
+    // Aplica cascata nos cards
+    const cards = document.querySelectorAll('.chart-card');
+    cards.forEach((card, i) => {
+        card.classList.remove('cascade-item'); 
+        void card.offsetWidth; // Reflow
+        card.classList.add('cascade-item');
+        card.style.animationDelay = `${i * 100}ms`;
+    });
+
     renderTrendChart(data);
     renderStatusChart(data);
     renderPuncChart(data);
+}
+
+// Cores baseadas no tema
+function getChartColors() {
+    const isDark = currentTheme === 'dark';
+    return {
+        text: isDark ? '#a1a1aa' : '#52525b',
+        grid: isDark ? '#27272a' : '#d4d4d8',
+        bg:   isDark ? '#18181b' : '#ffffff',
+        title: isDark ? '#ffffff' : '#18181b'
+    };
 }
 
 function renderTrendChart(data) {
     const ctxTrend = document.getElementById('chart-trend').getContext('2d');
     if (charts.trend) charts.trend.destroy();
 
+    const colors = getChartColors();
     const gradientTrend = ctxTrend.createLinearGradient(0, 300, 0, 0);
     gradientTrend.addColorStop(0, '#1e3a8a');
     gradientTrend.addColorStop(1, '#3b82f6');
@@ -339,7 +376,7 @@ function renderTrendChart(data) {
                 meta.data.forEach((bar, index) => {
                     const value = dataset.data[index];
                     if (value > 0) {
-                        ctx.fillStyle = '#ffffff';
+                        ctx.fillStyle = '#ffffff'; // Texto na barra sempre branco
                         ctx.font = 'bold 10px Inter, sans-serif';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
@@ -370,8 +407,8 @@ function renderTrendChart(data) {
                 tooltip: { callbacks: { label: function(context) { return context.parsed.y + '% de Aproveitamento'; } } }
             },
             scales: {
-                y: { beginAtZero: true, max: 100, grid: { color: '#27272a' }, ticks: { color: '#a1a1aa', stepSize: 25 } },
-                x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 10 } } }
+                y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, stepSize: 25 } },
+                x: { grid: { display: false }, ticks: { color: colors.text, font: { size: 10 } } }
             }
         },
         plugins: [dataLabelPlugin]
@@ -382,9 +419,8 @@ function renderStatusChart(data) {
     const ctxStatus = document.getElementById('chart-status').getContext('2d');
     if (charts.status) charts.status.destroy();
 
-    let batido = 0;          
-    let naoBatido = 0;       
-    let naoContabilizado = 0; 
+    const colors = getChartColors();
+    let batido = 0, naoBatido = 0, naoContabilizado = 0; 
 
     data.forEach(item => {
         if (statusChartMode === 'year') {
@@ -399,15 +435,11 @@ function renderStatusChart(data) {
                 naoContabilizado++;
             } else {
                 const valid = item.data.filter(v => 
-                    v !== null && 
-                    v !== undefined && 
-                    (typeof v !== 'string' || (v.trim() !== "" && v.trim() !== "NaN"))
+                    v !== null && v !== undefined && (typeof v !== 'string' || (v.trim() !== "" && v.trim() !== "NaN"))
                 );
                 
                 if (valid.length > 0) {
-                    const ultimoValor = valid[valid.length - 1];
-                    const status = getStatus(ultimoValor, item.meta, item.logic, item.format);
-                    
+                    const status = getStatus(valid[valid.length - 1], item.meta, item.logic, item.format);
                     if (status === 'good') batido++;
                     else if (status === 'bad') naoBatido++;
                     else naoContabilizado++;
@@ -428,7 +460,7 @@ function renderStatusChart(data) {
             const fontSize = (height / 140).toFixed(2);
             ctx.font = `bold ${fontSize}em Inter`;
             ctx.textBaseline = "middle";
-            ctx.fillStyle = "#ffffff";
+            ctx.fillStyle = colors.title; 
 
             const text = statusChartMode === 'year' ? "ANO" : "ATUAL";
             const textX = Math.round((width - ctx.measureText(text).width) / 2);
@@ -437,7 +469,7 @@ function renderStatusChart(data) {
             ctx.fillText(text, textX, textY);
             
             ctx.font = `normal ${fontSize*0.4}em Inter`;
-            ctx.fillStyle = "#a1a1aa";
+            ctx.fillStyle = colors.text;
             const sub = "(Clique)";
             const subX = Math.round((width - ctx.measureText(sub).width) / 2);
             ctx.fillText(sub, subX, textY + 20);
@@ -467,7 +499,7 @@ function renderStatusChart(data) {
                 renderStatusChart(data); 
             },
             plugins: {
-                legend: { position: 'bottom', labels: { color: '#f4f4f5', font: { size: 11 }, usePointStyle: true, padding: 20 } },
+                legend: { position: 'bottom', labels: { color: colors.text, font: { size: 11 }, usePointStyle: true, padding: 20 } },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
@@ -489,6 +521,7 @@ function renderPuncChart(data) {
     const ctxPunc = document.getElementById('chart-punc').getContext('2d');
     if (charts.punc) charts.punc.destroy();
 
+    const colors = getChartColors();
     const pData = Array(12).fill(0).map((_, i) => {
         let ok = 0, tot = 0;
         data.forEach(item => {
@@ -514,7 +547,7 @@ function renderPuncChart(data) {
                 borderColor: '#f59e0b',
                 backgroundColor: gradientPunc,
                 borderWidth: 2,
-                pointBackgroundColor: '#18181b',
+                pointBackgroundColor: colors.bg, 
                 pointBorderColor: '#f59e0b',
                 pointRadius: 4,
                 fill: true,
@@ -526,8 +559,8 @@ function renderPuncChart(data) {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                y: { beginAtZero: true, max: 100, grid: { color: '#27272a' }, ticks: { color: '#a1a1aa' } },
-                x: { grid: { display: false }, ticks: { color: '#a1a1aa', font: { size: 10 } } }
+                y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text } },
+                x: { grid: { display: false }, ticks: { color: colors.text, font: { size: 10 } } }
             }
         }
     });
@@ -836,18 +869,22 @@ function generateExport(type) {
             const options = {
                 scale: 2,
                 useCORS: true, 
-                backgroundColor: '#09090b',
+                backgroundColor: currentTheme === 'light' ? '#ffffff' : '#09090b', // Ajuste para PDF no tema
                 logging: false,
                 onclone: function(clonedDoc) {
                     const clonedChartsArea = clonedDoc.getElementById('charts-area');
                     if (clonedChartsArea) {
+                        const bg = currentTheme === 'light' ? '#ffffff' : '#09090b';
+                        const cardBg = currentTheme === 'light' ? '#ffffff' : '#18181b';
+                        const border = currentTheme === 'light' ? '#d4d4d8' : '#3f3f46';
+
                         clonedChartsArea.style.padding = '20px';
-                        clonedChartsArea.style.backgroundColor = '#09090b';
+                        clonedChartsArea.style.backgroundColor = bg;
                         const chartCards = clonedChartsArea.querySelectorAll('.chart-card');
                         chartCards.forEach(card => {
                             card.style.boxShadow = 'none';
-                            card.style.border = '1px solid #3f3f46';
-                            card.style.backgroundColor = '#18181b';
+                            card.style.border = `1px solid ${border}`;
+                            card.style.backgroundColor = cardBg;
                             card.style.overflow = 'visible';
                         });
                         const canvases = clonedChartsArea.querySelectorAll('canvas');
@@ -869,15 +906,22 @@ function generateExport(type) {
                 const imgWidth = pageWidth - 20; 
                 const imgHeight = (canvas.height * imgWidth) / canvas.width;
                 
-                doc.setFillColor(9, 9, 11);
-                doc.rect(0, 0, pageWidth, pageHeight, 'F');
+                // Fundo do PDF baseado no tema
+                if (currentTheme === 'dark') {
+                    doc.setFillColor(9, 9, 11);
+                    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+                    doc.setTextColor(255, 255, 255);
+                } else {
+                    doc.setFillColor(255, 255, 255);
+                    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+                    doc.setTextColor(0, 0, 0);
+                }
 
                 doc.setFontSize(16);
-                doc.setTextColor(255, 255, 255);
                 doc.text(`Dashboard FAV Analytics - ${currentYear}`, pageWidth / 2, 15, { align: 'center' });
                 
                 doc.setFontSize(10);
-                doc.setTextColor(200, 200, 200);
+                doc.setTextColor(150, 150, 150);
                 doc.text(`Setor: ${currentSector} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 
                         pageWidth / 2, 22, { align: 'center' });
                 
@@ -939,6 +983,7 @@ function renderDetailChart(item) {
     const ctx = document.getElementById('detailChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
     
+    const colors = getChartColors();
     const cData = item.data.map(v => {
         if(v===null||v==="") return null;
         let n = item.format==='time'?timeToDec(v):parseFloat(v.replace(',','.'));
@@ -949,8 +994,8 @@ function renderDetailChart(item) {
     
     // Gradiente bonito para o preenchimento
     const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); // Azul forte no topo
-    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)'); // Transparente embaixo
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); 
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)'); 
 
     chartInstance = new Chart(ctx, { 
         type: 'line', 
@@ -962,10 +1007,10 @@ function renderDetailChart(item) {
                 borderColor: '#3b82f6', 
                 backgroundColor: gradient,
                 borderWidth: 3,
-                tension: 0.3, // Curva suave
-                fill: true,   // Preenchimento ativado
+                tension: 0.3, 
+                fill: true,   
                 pointRadius: 4,
-                pointBackgroundColor: '#18181b',
+                pointBackgroundColor: colors.bg, // Dinâmico
                 pointBorderColor: '#3b82f6'
             }, { 
                 label: 'Meta', 
@@ -978,19 +1023,19 @@ function renderDetailChart(item) {
         }, 
         options: { 
             responsive: true, 
-            maintainAspectRatio: false, // Permite esticar e ocupar espaço
+            maintainAspectRatio: false, 
             layout: {
-                padding: { left: 0, right: 0, top: 10, bottom: 0 } // Remove margens
+                padding: { left: 0, right: 0, top: 10, bottom: 0 } 
             },
             plugins: { legend: { display: false } },
             scales: {
                 x: { 
                     grid: { display: false },
-                    ticks: { color: '#a1a1aa', font: { size: 10 } }
+                    ticks: { color: colors.text, font: { size: 10 } }
                 },
                 y: {
-                    grid: { color: '#27272a' },
-                    ticks: { color: '#a1a1aa' }
+                    grid: { color: colors.grid },
+                    ticks: { color: colors.text }
                 }
             }
         } 
@@ -1020,24 +1065,20 @@ function populateSectorFilter() { const d = fullDB[currentYear]||[]; const s = [
 // --- TOGGLE SETOR IMÓVEL (SWAP) ---
 function toggleNewSector() { 
     isNewSectorMode = !isNewSectorMode; 
-    
-    // Seletores
     const selectEl = document.getElementById('inp-sector');
     const inputEl = document.getElementById('inp-new-sector');
-    const btnEl = document.getElementById('btn-toggle-sector'); // ID do texto (Novo?)
+    const btnEl = document.getElementById('btn-toggle-sector'); 
 
     if(isNewSectorMode) {
-        // Esconde Select, Mostra Input
         selectEl.style.display = 'none';
         inputEl.style.display = 'block';
         if(btnEl) btnEl.innerText = "(Voltar)";
         inputEl.focus();
     } else {
-        // Mostra Select, Esconde Input
         selectEl.style.display = 'block';
         inputEl.style.display = 'none';
         if(btnEl) btnEl.innerText = "(Novo?)";
-        inputEl.value = ""; // Limpa input
+        inputEl.value = ""; 
     }
 }
 

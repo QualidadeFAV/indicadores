@@ -1,10 +1,9 @@
-/* * FAV ANALYTICS - STYLE V74 (BASE ORIGINAL + EDIT MODE REMODELADO)
- * Base: Sua versão V66/V71
- * Modificação: Redesign total da janela de Edição para Grid/Cards.
+/* * FAV ANALYTICS - STYLE V84 FINAL
+ * Features: Dark/Light Mode + Transição Global + Cascata Home + Chips Light Mode + Fix Ícone
  */
 
 :root {
-    /* --- PALETA DE CORES (Zinc Dark Theme) --- */
+    /* --- PALETA DE CORES PADRÃO (DARK / ZINC THEME) --- */
     --bg-body: #09090b;       
     --bg-panel: #18181b;      
     --bg-elevated: #27272a;   
@@ -15,19 +14,35 @@
     --text-main: #f4f4f5;     
     --text-muted: #a1a1aa;    
     
+    /* Gradiente do Header (Dark) */
+    --header-bg: linear-gradient(90deg, #121215 0%, #1c1c21 100%);
+
+    /* Acentos e Status */
     --accent: #3b82f6;        
     --accent-hover: #2563eb;
     --accent-glow: rgba(59, 130, 246, 0.15);
 
-    /* --- SEMÁFORO --- */
-    --good: #10b981;          
-    --good-bg: rgba(16, 185, 129, 0.1);
+    --good: #10b981; --good-bg: rgba(16, 185, 129, 0.1);
+    --warn: #f59e0b; --warn-bg: rgba(245, 158, 11, 0.1);
+    --bad: #ef4444; --bad-bg: rgba(239, 68, 68, 0.1);
     
-    --warn: #f59e0b;          
-    --warn-bg: rgba(245, 158, 11, 0.1);
+    --font-stack: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* --- TEMA CLARO (LIGHT MODE) --- */
+[data-theme="light"] {
+    --bg-body: #f4f4f5;       /* Fundo cinza claro */
+    --bg-panel: #ffffff;      /* Paineis brancos */
+    --bg-elevated: #e4e4e7;   /* Elementos de destaque */
     
-    --bad: #ef4444;           
-    --bad-bg: rgba(239, 68, 68, 0.1);
+    --border: #d4d4d8;        /* Bordas cinza médio */
+    --border-hover: #a1a1aa;  
+    
+    --text-main: #18181b;     /* Texto quase preto */
+    --text-muted: #52525b;    /* Texto cinza escuro */
+    
+    /* Gradiente do Header (Light) */
+    --header-bg: linear-gradient(90deg, #ffffff 0%, #f4f4f5 100%);
 }
 
 /* --- RESET GLOBAL --- */
@@ -40,7 +55,7 @@
 body {
     margin: 0;
     padding: 0;
-    font-family: 'Inter', sans-serif;
+    font-family: var(--font-stack);
     background-color: var(--bg-body);
     color: var(--text-main);
     font-size: 14px;
@@ -48,6 +63,21 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+/* =================================================================
+   --- MAGIC TRANSITION (TRANSIÇÃO SUAVE GLOBAL) ---
+   ================================================================= */
+body, .app-header, .kpi-item, .chart-card, 
+.modal-box, .modal-header, .stat-card, 
+.input-field, select.input-field, 
+.month-inp-group, .mig-header, 
+th, td, .btn-option, 
+.year-selector, .view-toggles {
+    transition: background-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                border-color 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                box-shadow 0.5s ease;
 }
 
 /* --- SCROLLBARS --- */
@@ -79,26 +109,26 @@ body {
     position: relative;
     width: 100%;
     z-index: 50;
-    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
     flex-shrink: 0;
 }
 
 .app-header {
-    background: linear-gradient(90deg, #121215 0%, #1c1c21 100%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    background: var(--header-bg);
+    border-bottom: 1px solid var(--border);
     padding: 10px 25px;
     display: flex; justify-content: space-between; align-items: center;
 }
 
 .header-left, .header-right { display: flex; align-items: center; gap: 15px; }
 
-.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1rem; color: white; letter-spacing: -0.5px; }
+.logo { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1rem; color: var(--text-main); letter-spacing: -0.5px; }
 
 /* Filtro Dropdown */
 .filter-wrapper { position: relative; }
 #sector-filter {
     appearance: none; -webkit-appearance: none;
-    background: rgba(255,255,255,0.03);
+    background: rgba(125,125,125,0.1);
     color: var(--text-muted);
     border: 1px solid var(--border);
     padding: 6px 30px 6px 12px;
@@ -107,13 +137,12 @@ body {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 10px center;
-    transition: 0.2s;
 }
-#sector-filter:hover { background-color: var(--bg-elevated); color: white; border-color: var(--border-hover); }
+#sector-filter:hover { background-color: var(--bg-elevated); color: var(--text-main); border-color: var(--border-hover); }
 
 /* Botões do Header */
 .year-selector, .view-toggles {
-    display: flex; gap: 2px; background: rgba(0,0,0,0.2); padding: 2px;
+    display: flex; gap: 2px; background: rgba(125,125,125,0.1); padding: 2px;
     border-radius: 6px; border: 1px solid var(--border);
 }
 .year-btn, .view-btn {
@@ -122,17 +151,16 @@ body {
     font-weight: 600; font-size: 0.75rem; transition: 0.2s;
 }
 .year-btn.active, .view-btn.active {
-    background: var(--bg-elevated); color: var(--accent);
-    box-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    background: var(--bg-panel); color: var(--accent);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 
 .icon-btn {
     background: transparent; border: 1px solid transparent; color: var(--text-muted);
     width: 30px; height: 30px; border-radius: 6px; cursor: pointer;
     display: flex; align-items: center; justify-content: center;
-    transition: 0.2s;
 }
-.icon-btn:hover { background: var(--bg-elevated); color: white; border-color: var(--border); }
+.icon-btn:hover { background: var(--bg-elevated); color: var(--text-main); border-color: var(--border); }
 
 /* --- KPI BAR --- */
 .kpi-bar {
@@ -141,7 +169,7 @@ body {
 .kpi-item {
     flex: 1; background: var(--bg-panel); padding: 8px 15px;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
-    height: 60px; transition: 0.2s;
+    height: 60px;
 }
 .kpi-item:hover { background: var(--bg-elevated); }
 
@@ -149,7 +177,7 @@ body {
     font-size: 0.65rem; text-transform: uppercase; color: var(--text-muted);
     font-weight: 600; margin-bottom: 2px;
 }
-.kpi-value { font-size: 1.2rem; font-weight: 700; color: white; }
+.kpi-value { font-size: 1.2rem; font-weight: 700; color: var(--text-main); }
 
 .kpi-item.bad .kpi-value { color: var(--bad); }
 
@@ -168,42 +196,28 @@ body {
 .view-pane { display: none; }
 .view-pane.active { display: block; }
 
-/* --- TABELA (ORIGINAL) --- */
+/* --- TABELA --- */
 .table-wrapper {
     background: var(--bg-panel); border: 1px solid var(--border);
     border-radius: 8px; overflow: hidden;
 }
 
-table { 
-    width: 100%; 
-    border-collapse: collapse; 
-    border-spacing: 0; 
-    table-layout: fixed; 
-}
+table { width: 100%; border-collapse: collapse; border-spacing: 0; table-layout: fixed; }
+tr { height: 50px; }
 
-/* Linhas com altura mínima automática */
-tr {
-    height: 50px; 
-}
-
-/* Coluna de Títulos: Wrap + Altura Dinâmica */
 .col-name { 
-    width: 22%; 
-    text-align: left; 
-    padding: 10px 10px 10px 20px; 
-    color: white; 
+    width: 22%; text-align: left; padding: 10px 10px 10px 20px; 
+    color: var(--text-main);
     font-weight: 500; 
-    white-space: normal; 
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-    line-height: 1.3; 
-    vertical-align: middle; 
+    white-space: normal; word-wrap: break-word; overflow-wrap: break-word; 
+    line-height: 1.3; vertical-align: middle; 
 }
 
 .col-meta { width: 8%; text-align: center; color: var(--accent); font-weight: 700; }
 
 th {
-    background: #1f1f22; color: var(--text-muted); font-size: 0.7rem;
+    background: var(--bg-elevated);
+    color: var(--text-muted); font-size: 0.7rem;
     text-transform: uppercase; font-weight: 700; padding: 12px 5px;
     border-bottom: 1px solid var(--border);
     vertical-align: middle;
@@ -216,17 +230,14 @@ td {
     text-align: center; 
     color: var(--text-muted);
     cursor: pointer; 
-    transition: 0.1s; 
     font-size: 0.85rem;
-    white-space: nowrap; 
-    overflow: hidden; 
-    text-overflow: ellipsis;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     vertical-align: middle; 
 }
 
 tr:last-child td { border-bottom: none; }
 
-td:hover { background: var(--bg-elevated) !important; color: white; filter: brightness(1.2); }
+td:hover { background: var(--bg-elevated) !important; color: var(--text-main); filter: brightness(0.95); }
 
 .cell-good { color: var(--good); font-weight: 700; }
 .cell-bad { color: var(--bad); font-weight: 700; }
@@ -245,7 +256,7 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
     border-radius: 12px; padding: 20px;
 }
 .chart-card.full { grid-column: span 2; }
-.chart-card h3 { margin: 0 0 15px 0; color: white; font-size: 0.95rem; }
+.chart-card h3 { margin: 0 0 15px 0; color: var(--text-main); font-size: 0.95rem; }
 .chart-box { position: relative; height: 280px; width: 100%; }
 
 /* --- MODAIS --- */
@@ -257,31 +268,33 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 .modal-overlay.open { display: flex; }
 
 .modal-box {
-    background: #121215; border: 1px solid var(--border); border-radius: 12px;
+    background: var(--bg-body);
+    border: 1px solid var(--border); border-radius: 12px;
     display: flex; flex-direction: column;
     box-shadow: 0 25px 80px rgba(0,0,0,0.7);
-    max-height: 85vh; 
-    width: 950px; 
-    max-width: 95vw;
+    min-height: 600px;
+    height: auto; 
+    max-height: 90vh; 
+    width: 950px; max-width: 95vw;
 }
-.modal-box.small { width: 380px; max-height: none; height: auto; }
+.modal-box.small { width: 380px; max-height: none; height: auto; min-height: auto; }
 
 .modal-header {
     padding: 15px 25px; border-bottom: 1px solid var(--border);
     background: var(--bg-panel); display: flex; justify-content: space-between; align-items: center;
     flex-shrink: 0;
 }
-.modal-header h2, .modal-header h3 { margin: 0; color: white; font-size: 1.1rem; font-weight: 600; }
+.modal-header h2, .modal-header h3 { margin: 0; color: var(--text-main); font-size: 1.1rem; font-weight: 600; }
 
 .close-btn {
     background: transparent; border: none; color: var(--text-muted); cursor: pointer;
 }
-.close-btn:hover { color: white; }
+.close-btn:hover { color: var(--text-main); }
 
-/* MODAL BODY (SEM SCROLL NO GERAL) */
+/* MODAL BODY */
 .modal-body {
     padding: 20px 25px;
-    overflow-y: auto; /* Permite scroll se o conteudo edit for muito grande */
+    overflow-y: auto;
     overflow-x: hidden;
     flex: 1; 
     display: flex;
@@ -296,13 +309,13 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 }
 
 .stat-card {
-    background: var(--bg-body); border: 1px solid var(--border);
+    background: var(--bg-panel); border: 1px solid var(--border);
     padding: 10px 5px; border-radius: 10px; text-align: center;
     display: flex; flex-direction: column; justify-content: center;
 }
 
 .stat-val {
-    font-size: 1.1rem; font-weight: 700; color: white; margin-bottom: 3px;
+    font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 3px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
@@ -315,8 +328,8 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 .stat-val.accent { color: var(--accent); }
 
 .logic-badge {
-    font-size: 0.6rem; color: #666; margin-top: 4px;
-    background: rgba(255, 255, 255, 0.05); padding: 2px 6px;
+    font-size: 0.6rem; color: var(--text-muted); margin-top: 4px;
+    background: rgba(125,125,125,0.1); padding: 2px 6px;
     border-radius: 4px; display: inline-block; align-self: center;
 }
 
@@ -327,25 +340,25 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 
 /* Timeline */
 .timeline-area { margin-bottom: 10px; padding-top: 0; border-top: none; flex-shrink: 0; }
-.timeline-area h4 { margin: 0 0 10px 0; color: white; font-size: 1rem; }
+.timeline-area h4 { margin: 0 0 10px 0; color: var(--text-main); font-size: 1rem; }
 .timeline-track { display: flex; width: 100%; justify-content: space-between; position: relative; padding: 5px 0; }
 .timeline-track::before { content: ''; position: absolute; top: 10px; left: 10px; right: 10px; height: 1px; background: var(--border); z-index: 0; }
 .timeline-item { display: flex; flex-direction: column; align-items: center; width: 20px; cursor: help; z-index: 1; position: relative; }
 .tl-dot {
     width: 12px; height: 12px; border-radius: 50%;
-    background: var(--bg-panel); border: 2px solid var(--border); transition: 0.2s;
+    background: var(--bg-panel); border: 2px solid var(--border);
 }
-.tl-dot:hover { transform: scale(1.3); border-color: white; }
+.tl-dot:hover { transform: scale(1.3); border-color: var(--text-main); }
 .tl-dot.ok { background: var(--good); border-color: var(--good); }
 .tl-dot.late { background: var(--bad); border-color: var(--bad); }
 .tl-dot.empty { border-color: var(--border); opacity: 0.3; }
 .tl-label { margin-top: 5px; font-size: 0.6rem; color: var(--text-muted); }
 
-/* Chart Wrapper (Absolute) */
+/* Chart Wrapper */
 .chart-wrapper {
-    flex-grow: 1; /* Ocupa o resto do espaço vazio */
-    min-height: 250px; /* Permite ajuste */
-    position: relative; /* Pai relativo */
+    flex-grow: 1; 
+    min-height: 250px; 
+    position: relative; 
     background: var(--bg-panel); border: 1px solid var(--border);
     border-radius: 8px; padding: 10px; 
     margin-bottom: 0;
@@ -360,28 +373,24 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 }
 
 /* =================================================================
-   --- NOVO EDIT MODE (REMODELADO E BONITO) ---
+   --- EDIT MODE (GRID) ---
    ================================================================= */
 
-/* Grid Principal de Configuração */
 .form-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr); /* 4 colunas para melhor alinhamento */
+    grid-template-columns: repeat(4, 1fr); 
     gap: 20px;
-    background: var(--bg-elevated); /* Caixa separada visualmente */
+    background: var(--bg-elevated); 
     padding: 20px;
     border-radius: 8px;
     border: 1px solid var(--border);
     margin-bottom: 25px;
-    align-items: end; /* Alinha inputs na base */
+    align-items: end; 
 }
 
-/* Responsividade interna do grid */
 .form-group { display: flex; flex-direction: column; }
-/* ID ocupa 1 coluna, Nome ocupa 3 (para ter destaque) */
 .form-group:nth-child(1) { grid-column: span 1; } 
 .form-group:nth-child(2) { grid-column: span 3; } 
-/* Setor ocupa 2 colunas */
 .form-group:nth-child(3) { grid-column: span 2; } 
 
 .form-group label {
@@ -391,32 +400,29 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 
 .input-field, select.input-field {
     width: 100%;
-    background: var(--bg-body);
+    background: var(--bg-panel);
     border: 1px solid var(--border);
     color: var(--text-main);
     padding: 10px 12px;
     border-radius: 6px;
     transition: all 0.2s;
-    height: 42px; /* Altura consistente */
+    height: 42px; 
     font-family: 'Inter', sans-serif;
 }
 .input-field:focus {
     border-color: var(--accent);
     box-shadow: 0 0 0 3px var(--accent-glow);
-    background: #000;
 }
 
-/* Grid de Meses (Cartões) */
 .months-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr); /* 4 cartões por linha */
+    grid-template-columns: repeat(4, 1fr); 
     gap: 15px;
     padding-bottom: 20px;
 }
 
-/* Cartão Individual de Mês */
 .month-inp-group {
-    background: var(--bg-body);
+    background: var(--bg-panel);
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden; 
@@ -429,10 +435,9 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 }
 .month-inp-group:focus-within {
     border-color: var(--accent);
-    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
 }
 
-/* Header do Cartão (Nome do Mês) */
 .mig-header {
     background: var(--bg-elevated);
     padding: 8px 0;
@@ -444,7 +449,6 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
     text-transform: uppercase;
 }
 
-/* Input de Valor (Grande e Centralizado) */
 .month-inp-group .input-field {
     background: transparent;
     border: none;
@@ -464,7 +468,6 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 }
 .month-inp-group .input-field::placeholder { color: var(--border-hover); opacity: 1; font-weight: 400; }
 
-/* Input de Data (Pequeno no rodapé) */
 .date-inp {
     width: 100%;
     background: transparent;
@@ -498,14 +501,14 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 .btn-primary:hover { background: var(--accent-hover); box-shadow: 0 2px 10px var(--accent-glow); }
 
 .btn-ghost { background: transparent; border: 1px solid var(--border); color: var(--text-muted); padding: 8px 20px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: 0.2s; }
-.btn-ghost:hover { border-color: var(--text-muted); color: white; }
+.btn-ghost:hover { border-color: var(--text-muted); color: var(--text-main); }
 
 .btn-danger { background: rgba(239,68,68,0.1); border: 1px solid var(--bad); color: var(--bad); padding: 8px 20px; border-radius: 6px; cursor: pointer; }
 .btn-danger:hover { background: var(--bad); color: white; }
 
 /* Botão PDF no Modal */
 .btn-option {
-    width: 100%; background: var(--bg-body); border: 1px solid var(--border); color: var(--text-main);
+    width: 100%; background: var(--bg-panel); border: 1px solid var(--border); color: var(--text-main);
     padding: 12px; border-radius: 6px; margin-bottom: 8px; cursor: pointer;
     display: flex; align-items: center; gap: 10px; transition: 0.2s;
 }
@@ -533,7 +536,7 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 
 /* --- MINI MODAL (Mês) --- */
 .centered { text-align: center; display: flex; flex-direction: column; align-items: center; }
-.month-stat-big .value { font-size: 3rem; font-weight: 800; color: white; }
+.month-stat-big .value { font-size: 3rem; font-weight: 800; color: var(--text-main); }
 .month-stat-row {
     display: flex; justify-content: space-around; width: 100%; margin: 20px 0;
     border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 15px 0;
@@ -544,13 +547,12 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
 }
 .btn-primary.full { width: 100%; }
 
-/* --- IMPRESSÃO / PDF --- */
 @media print {
     .main-container, .charts-grid, .chart-card {
         visibility: visible !important;
         position: relative !important;
         break-inside: avoid !important;
-        background-color: #09090b !important;
+        background-color: #ffffff !important;
         color: black !important;
     }
     
@@ -559,4 +561,72 @@ td:hover { background: var(--bg-elevated) !important; color: white; filter: brig
     }
     
     body { background-color: #fff; }
+}
+
+/* =================================================================
+   --- AJUSTE DE TABELA - LIGHT MODE (CHIPS/QUADRADINHOS) ---
+   ================================================================= */
+
+/* Célula Positiva (Verde) */
+[data-theme="light"] .cell-good {
+    background-color: var(--good) !important;
+    color: #ffffff !important; 
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+    border-radius: 4px;
+}
+
+/* Célula Negativa (Vermelha) */
+[data-theme="light"] .cell-bad {
+    background-color: var(--bad) !important;
+    color: #ffffff !important; 
+    font-weight: 700;
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,0.4);
+    border-radius: 4px;
+}
+
+/* Hover específico para não quebrar a cor no modo claro */
+[data-theme="light"] .cell-good:hover {
+    background-color: #059669 !important; /* Verde escuro */
+    filter: none;
+}
+
+[data-theme="light"] .cell-bad:hover {
+    background-color: #dc2626 !important; /* Vermelho escuro */
+    filter: none;
+}
+
+/* =================================================================
+   --- ANIMAÇÃO DO ÍCONE DE TEMA (SPIN & SWAP) ---
+   Agora usamos a classe .icon-spin que o JS V84 controla
+   ================================================================= */
+@keyframes icon-spin {
+    0% { transform: rotate(-90deg) scale(0); opacity: 0; }
+    80% { transform: rotate(10deg) scale(1.1); opacity: 1; }
+    100% { transform: rotate(0) scale(1); opacity: 1; }
+}
+
+.icon-spin {
+    animation: icon-spin 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+    transform-origin: center;
+}
+
+/* =================================================================
+   --- ANIMAÇÃO CASCATA (HOME / TABELA) ---
+   ================================================================= */
+@keyframes cascade-slide {
+    from { 
+        opacity: 0; 
+        transform: translateY(20px); 
+    }
+    to { 
+        opacity: 1; 
+        transform: translateY(0); 
+    }
+}
+
+/* Classe base para elementos que vão entrar em cascata */
+.cascade-item {
+    opacity: 0; /* Começa invisível */
+    animation: cascade-slide 0.5s ease forwards;
 }

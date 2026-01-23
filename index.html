@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FAV Analytics</title>
+    <title>FAV Analytics | V80 Final</title>
     <link rel="icon" type="image/png" href="favicon.png">
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -47,6 +47,10 @@
                         <button class="year-btn active" id="btn-2025" onclick="setYear('2025')">2025</button>
                         <button class="year-btn" id="btn-2026" onclick="setYear('2026')">2026</button>
                     </div>
+
+                    <button class="icon-btn" onclick="toggleTheme()" title="Alterar Tema">
+                        <i id="theme-icon" data-lucide="sun"></i>
+                    </button>
 
                     <button class="icon-btn" onclick="openPdfModal()" title="Exportar">
                         <i data-lucide="download"></i>
@@ -211,21 +215,21 @@
                             <select id="inp-format" class="input-field">
                                 <optgroup label="Básicos">
                                     <option value="number">Número</option>
-                                    <option value="money">Reais (R$)</option>
-                                    <option value="percent">Percentual (%)</option>
+                                    <option value="money">Reais</option>
+                                    <option value="percent">Percentual</option>
                                     <option value="patients">Pacientes</option>
                                 </optgroup>
                                 <optgroup label="Tempo">
-                                    <option value="time">Horas (00:00)</option>
+                                    <option value="time">Horas</option>
                                     <option value="minutes">Minutos</option>
                                     <option value="days">Dias</option>
                                     <option value="years">Anos</option>
                                 </optgroup>
                                 <optgroup label="Volume e Peso">
-                                    <option value="m3">Metro Cúbico (m³)</option>
+                                    <option value="m3">Metro Cúbico</option>
                                     <option value="liters">Litros</option>
                                     <option value="ml">Mililitros</option>
-                                    <option value="kg">Quilograma (kg)</option>
+                                    <option value="kg">Quilograma</option>
                                 </optgroup>
                                 <optgroup label="Outros">
                                     <option value="kwh">Quilowatt/hora</option>
@@ -321,5 +325,4 @@
 
     <script src="script.js"></script>
 </body>
-
 </html>
