@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - STYLE V98 FINAL
- * Features: Hierarquia Visual (Label -> Value -> Context) + Tooltips
+/* * FAV ANALYTICS - STYLE V99 FINAL
+ * Features: Fix Select Nativo (Color-Scheme) + Todas as Features Anteriores
  */
 
 :root {
@@ -30,6 +30,9 @@
     --bad: #ef4444; --bad-bg: rgba(239, 68, 68, 0.1);
     
     --font-stack: 'Inter', system-ui, -apple-system, sans-serif;
+
+    /* MUDANÇA: Força o navegador a renderizar controles nativos em modo escuro */
+    color-scheme: dark; 
 }
 
 /* --- TEMA CLARO (LIGHT MODE) --- */
@@ -47,6 +50,9 @@
     --text-muted: #52525b;    /* Texto cinza escuro */
     
     --header-bg: linear-gradient(90deg, #ffffff 0%, #f4f4f5 100%);
+
+    /* MUDANÇA: Reverte controles nativos para claro */
+    color-scheme: light;
 }
 
 /* --- RESET GLOBAL --- */
@@ -143,6 +149,12 @@ th, td, .btn-option,
     background-position: right 10px center;
 }
 #sector-filter:hover { background-color: var(--bg-elevated); color: var(--text-main); border-color: var(--border-hover); }
+
+/* Fix para garantir que as opções do select fiquem com a cor certa */
+#sector-filter option {
+    background-color: var(--bg-panel);
+    color: var(--text-main);
+}
 
 /* Botões do Header */
 .year-selector, .view-toggles {

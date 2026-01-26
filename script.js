@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - CORE V98 FINAL
- * Features: Tooltips Descritivos (Hover) + Fix Centralização Batida %
+/* * FAV ANALYTICS - CORE V99 FINAL
+ * Features: Título KPI Dinâmico (Institucional/Setor) + Consistência
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
@@ -94,6 +94,17 @@ function renderApp(filter = currentSector) {
     populateSectorFilter();
     const data = fullDB[currentYear] || [];
     const filtered = filter === 'Todos' ? data : data.filter(i => i.sector === filter);
+
+    // --- LÓGICA DO TÍTULO DINÂMICO ---
+    const perfLabel = document.getElementById('kpi-perf-label');
+    if (perfLabel) {
+        if (filter === 'Todos') {
+            perfLabel.innerText = "Performance Institucional";
+        } else {
+            perfLabel.innerText = "Performance " + filter;
+        }
+    }
+    // ----------------------------------
 
     updateKPIs(filtered);
 
@@ -616,7 +627,7 @@ function openMainModal(id) {
         setStatWithTooltip('viewLastPct', nLast, 'Último');
         // -------------------------
 
-        // --- CÁLCULO TARGET COM TOOLTIP ---
+        // --- CÁLCULO CONSISTÊNCIA COM TOOLTIP ---
         const targetEl = document.getElementById('viewTarget');
         if (valid.length > 0) {
             const pctBatida = Math.round((hits / valid.length) * 100);
