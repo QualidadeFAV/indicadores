@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FAV Analytics</title>
+    <link rel="icon" type="image/png" href="favicon.png">
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.31/jspdf.plugin.autotable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">Carregando dados...</div>
+    </div>
+
+    <div class="main-container">
+        
+        <div id="static-header-group">
+            <header class="app-header">
+                <div class="header-left">
+                    <div class="logo">
+                        <i data-lucide="database-zap" style="color:var(--accent)"></i>
+                        <span>FAV ANALYTICS</span>
+                    </div>
+                    
+                    <div class="filter-wrapper">
+                        <select id="sector-filter" onchange="setSector(this.value)">
+                            </select>
+                    </div>
+                </div>
+
+                <div class="header-right">
+                    <div class="year-selector">
+                        <button class="year-btn active" id="btn-2025" onclick="setYear('2025')">2025</button>
+                        <button class="year-btn" id="btn-2026" onclick="setYear('2026')">2026</button>
+                    </div>
+
+                    <button class="icon-btn" onclick="toggleTheme()" title="Alterar Tema">
+                        <i id="theme-icon" data-lucide="sun"></i>
+                    </button>
+
+                    <button class="icon-btn" onclick="openPdfModal()" title="Exportar">
+                        <i data-lucide="download"></i>
+                    </button>
+
+                    <div class="view-toggles">
+                        <button class="view-btn active" id="btn-view-table" onclick="switchView('table')"><i data-lucide="table"></i></button>
+                        <button class="view-btn" id="btn-view-exec" onclick="switchView('exec')"><i data-lucide="bar-chart-2"></i></button>
+                    </div>
+                </div>
+            </header>
+
+            <div class="kpi-bar">
+                <div class="kpi-item">
+                    <span class="kpi-label" id="kpi-perf-label">Performance Institucional</span>
+                    <span class="kpi-value" id="kpi-perf">-</span>
+                </div>
+                <div class="kpi-item">
+                    <div class="kpi-label-row">
+                        <span>Pontualidade</span>
+                        <button class="tiny-btn" onclick="configDeadline()" title="Ajustar Prazo">
+                            <i data-lucide="settings-2"></i>
+                        </button>
+                    </div>
+                    <span class="kpi-value" id="kpi-punc">-</span>
+                </div>
+                <div class="kpi-item bad">
+                    <span class="kpi-label">Críticos</span>
+                    <span class="kpi-value" id="kpi-crit">-</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="content-viewport" id="mainContentArea">
+            
+            <div id="view-table" class="view-pane active">
+                <div class="table-wrapper">
+                    <table id="main-table">
+                        <thead>
+                            <tr>
+                                <th class="col-name">Indicador</th>
+                                <th class="col-meta">Meta</th>
+                                <th>Jan</th><th>Fev</th><th>Mar</th><th>Abr</th><th>Mai</th><th>Jun</th>
+                                <th>Jul</th><th>Ago</th><th>Set</th><th>Out</th><th>Nov</th><th>Dez</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body"></tbody>
+                    </table>
+                    
+                    <div id="empty-state" class="empty-state" style="display:none">
+                        <i data-lucide="folder-open" size="48" style="opacity:0.3"></i>
+                        <p>Nenhum indicador encontrado.</p>
+                        <button class="btn-primary" onclick="importFrom2025()">Importar Dados 2025</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-exec" class="view-pane" style="display:none">
+                <div class="charts-grid" id="charts-area">
+                    <div class="chart-card full">
+                        <h3>Performance Anual</h3>
+                        <div class="chart-box"><canvas id="chart-trend"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Status Geral</h3>
+                        <div class="chart-box"><canvas id="chart-status"></canvas></div>
+                    </div>
+                    <div class="chart-card">
+                        <h3>Pontualidade</h3>
+                        <div class="chart-box"><canvas id="chart-punc"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <button class="fab" onclick="openCreateModal()"><i data-lucide="plus"></i></button>
+    </div>
+
+    <div class="modal-overlay" id="mainModal">
+        <div class="modal-box large">
+            <div class="modal-header">
+                <h2 id="modalTitle">Detalhes</h2>
+                <button class="close-btn" onclick="closeModal('mainModal')"><i data-lucide="x"></i></button>
+            </div>
+            
+            <div class="modal-body">
+                
+                <div id="mode-view">
+                    <div class="stats-row">
+                        
+                        <div class="stat-card">
+                            <div class="stat-label">Meta Alvo</div>
+                            <div class="stat-val accent" id="viewMetaDisplay">-</div>
+                            <div id="viewLogicBadge" class="logic-badge">-</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-label">Último</div>
+                            <div class="stat-val" id="viewLast">-</div>
+                            <div id="viewLastPct" class="sub-stat">-</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-label">Média</div>
+                            <div class="stat-val" id="viewAvg">-</div>
+                            <div id="viewAvgPct" class="sub-stat">-</div>
+                        </div>
+
+                        <div class="stat-card">
+                            <div class="stat-label">Consistência</div>
+                            <div class="stat-val" id="viewTarget" style="color:var(--good); cursor:help">-</div>
+                        </div>
+
+                        <div class="stat-card bordered" style="border-color:var(--border)">
+                            <div class="stat-label">Pontualidade</div>
+                            <div class="stat-val" id="viewPunc" style="font-size:1.4rem">-</div>
+                            <div id="puncBadge" style="margin-top:2px; font-size:0.7rem"></div>
+                        </div>
+
+                    </div>
+                    
+                    <div class="chart-wrapper">
+                        <canvas id="detailChart"></canvas>
+                    </div>
+
+                    <div class="timeline-area">
+                        <h4>Histórico de Entregas</h4>
+                        <div id="timelineTrack" class="timeline-track"></div>
+                    </div>
+                </div>
+
+                <div id="mode-edit" style="display:none">
+                    <input type="hidden" id="inp-id">
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>ID Sistema</label>
+                            <input type="text" value="AUTO" class="input-field" disabled style="text-align:center; opacity:0.5;">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Nome do Indicador</label>
+                            <input type="text" id="inp-name" class="input-field" placeholder="Ex: Taxa de Ocupação">
+                        </div>
+
+                        <div class="form-group">
+                            <label>
+                                Setor 
+                                <span id="btn-toggle-sector" onclick="toggleNewSector()" style="cursor:pointer; color:var(--accent); float:right; font-size:0.65rem; font-weight:600;">(Novo?)</span>
+                            </label>
+                            <select id="inp-sector" class="input-field"></select>
+                            <input type="text" id="inp-new-sector" class="input-field" style="display:none;" placeholder="Digite o novo setor">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Meta Alvo</label>
+                            <input type="text" id="inp-meta" class="input-field" placeholder="0">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Lógica</label>
+                            <select id="inp-logic" class="input-field">
+                                <option value="maior">Maior Melhor (↑)</option>
+                                <option value="menor">Menor Melhor (↓)</option>
+                            </select>
+                        </div>
+
+                        <div class="form-group">
+                            <label>Unidade de Medida</label>
+                            <select id="inp-format" class="input-field">
+                                <optgroup label="Básicos">
+                                    <option value="number">Número</option>
+                                    <option value="money">Reais</option>
+                                    <option value="percent">Percentual</option>
+                                    <option value="patients">Pacientes</option>
+                                </optgroup>
+                                <optgroup label="Tempo">
+                                    <option value="time">Horas</option>
+                                    <option value="minutes">Minutos</option>
+                                    <option value="days">Dias</option>
+                                    <option value="years">Anos</option>
+                                </optgroup>
+                                <optgroup label="Volume e Peso">
+                                    <option value="m3">Metro Cúbico</option>
+                                    <option value="liters">Litros</option>
+                                    <option value="ml">Mililitros</option>
+                                    <option value="kg">Quilograma</option>
+                                </optgroup>
+                                <optgroup label="Outros">
+                                    <option value="kwh">Quilowatt/hora</option>
+                                    <option value="gas">Botijão</option>
+                                    <option value="cm">Centímetros</option>
+                                    <option value="package">Pacote</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h4 style="color:var(--text-muted); font-size:0.8rem; text-transform:uppercase; margin-bottom:15px; border-bottom:1px solid var(--border); padding-bottom:5px;">
+                            Lançamentos Mensais
+                        </h4>
+                        <div class="months-grid" id="monthsGrid">
+                            </div>
+                    </div>
+
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <div id="footer-view" class="footer-content right">
+                    <button class="btn-ghost" onclick="switchToEditMode()"><i data-lucide="pencil" size="16"></i> Editar Dados</button>
+                    <button class="btn-primary" onclick="closeModal('mainModal')">Fechar</button>
+                </div>
+                <div id="footer-edit" class="footer-content split" style="display:none">
+                    <button class="btn-danger" onclick="deleteItem()">Excluir</button>
+                    <div class="gap-10">
+                        <button class="btn-ghost" onclick="switchToViewMode()">Cancelar</button>
+                        <button class="btn-primary" onclick="saveItem()">Salvar Alterações</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="pdfModal">
+        <div class="modal-box small">
+            <div class="modal-header">
+                <h3>Exportar Dados</h3>
+                <button class="close-btn" onclick="closeModal('pdfModal')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body centered">
+                <p style="color:var(--text-muted); margin-bottom:20px; font-size:0.9rem">Selecione o formato desejado:</p>
+                <button class="btn-option" onclick="generateExport('table-pdf')">
+                    <i data-lucide="file-text"></i> Relatório em PDF (Tabela)
+                </button>
+                <button class="btn-option" onclick="generateExport('excel')">
+                    <i data-lucide="sheet"></i> Planilha Editável (Excel)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="monthModal">
+        <div class="modal-box small">
+            <div class="modal-header">
+                <h3 id="monthModalTitle">Detalhes</h3>
+                <button class="close-btn" onclick="closeModal('monthModal')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body centered">
+                <div class="month-stat-big">
+                    <span class="label">Valor Realizado</span>
+                    <span class="value" id="monthValue">-</span>
+                </div>
+                <div class="month-stat-row">
+                    <div class="ms-item">
+                        <span class="label">Meta</span>
+                        <span class="val" id="monthMeta">-</span>
+                    </div>
+                    <div class="ms-item">
+                        <span class="label">Status</span>
+                        <span class="val" id="monthStatus">-</span>
+                    </div>
+                </div>
+                <div class="month-delivery">
+                    <span class="label">Data de Entrega</span>
+                    <div class="delivery-badge" id="monthDelivery">-</div>
+                </div>
+            </div>
+            <div class="modal-footer centered">
+                <button class="btn-primary full" onclick="closeModal('monthModal')">OK</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="toast">Salvo com sucesso!</div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
