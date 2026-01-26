@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - STYLE V100 FINAL
- * Features: Custom CSS Tooltips (Substituindo o Title nativo)
+/* * FAV ANALYTICS - STYLE V102 FINAL
+ * Features: Tooltips para Baixo (Downward) + Todas as Features
  */
 
 :root {
@@ -35,6 +35,7 @@
     
     --font-stack: 'Inter', system-ui, -apple-system, sans-serif;
 
+    /* Força controles nativos escuros */
     color-scheme: dark; 
 }
 
@@ -58,6 +59,7 @@
     --tooltip-bg: #18181b;
     --tooltip-text: #ffffff;
 
+    /* Reverte controles nativos para claro */
     color-scheme: light;
 }
 
@@ -156,6 +158,7 @@ th, td, .btn-option,
 }
 #sector-filter:hover { background-color: var(--bg-elevated); color: var(--text-main); border-color: var(--border-hover); }
 
+/* Fix para garantir que as opções do select fiquem com a cor certa */
 #sector-filter option {
     background-color: var(--bg-panel);
     color: var(--text-main);
@@ -356,6 +359,11 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     font-size: 1.1rem; font-weight: 700; color: var(--text-main); 
     margin: 0; 
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* FIX CRÍTICO: Permite que o tooltip saia da caixa da 'Consistência' */
+.stat-val[data-tooltip] {
+    overflow: visible !important;
 }
 
 /* SUB-STAT: Base para Tooltip */
@@ -684,7 +692,7 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
 }
 
 /* =================================================================
-   --- CUSTOM TOOLTIP (Substitui o 'title' nativo feio) ---
+   --- CUSTOM TOOLTIP (ABRINDO PARA BAIXO) ---
    ================================================================= */
 
 /* Elementos que tem o atributo data-tooltip */
@@ -693,13 +701,14 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     cursor: help;
 }
 
-/* O corpo da caixinha do tooltip */
+/* O corpo da caixinha do tooltip (Para baixo) */
 [data-tooltip]::after {
     content: attr(data-tooltip);
     position: absolute;
-    bottom: 120%; /* Aparece acima do elemento */
+    top: 115%; /* Fixa para abrir embaixo */
+    bottom: auto;
     left: 50%;
-    transform: translateX(-50%) translateY(10px); /* Começa um pouco mais baixo (animação) */
+    transform: translateX(-50%) translateY(-10px); /* Animação começando de cima */
     
     background-color: var(--tooltip-bg);
     color: var(--tooltip-text);
@@ -710,31 +719,32 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     font-size: 0.7rem;
     font-weight: 500;
     line-height: 1.4;
-    white-space: pre-wrap; /* Permite quebras de linha (\n) */
+    white-space: pre-wrap;
     text-align: center;
     width: max-content;
     max-width: 220px;
     box-shadow: 0 4px 15px rgba(0,0,0,0.3);
     z-index: 9999;
     
-    /* Estado inicial (invisível) */
     visibility: hidden;
     opacity: 0;
     transition: opacity 0.2s, transform 0.2s;
-    pointer-events: none; /* Mouse não interage com o tooltip */
+    pointer-events: none;
 }
 
-/* Setinha do Tooltip */
+/* Setinha do Tooltip (Apontando para cima) */
 [data-tooltip]::before {
     content: '';
     position: absolute;
-    bottom: 110%; 
+    top: 105%;
+    bottom: auto; 
     left: 50%;
-    transform: translateX(-50%) translateY(10px);
+    transform: translateX(-50%) translateY(-10px);
     
     border-width: 6px;
     border-style: solid;
-    border-color: var(--tooltip-bg) transparent transparent transparent;
+    /* Transparente nas laterais e cor embaixo = Seta pra cima */
+    border-color: transparent transparent var(--tooltip-bg) transparent;
     
     visibility: hidden;
     opacity: 0;
@@ -742,10 +752,10 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     z-index: 9999;
 }
 
-/* Hover State (Aparecer) */
+/* Hover State */
 [data-tooltip]:hover::after,
 [data-tooltip]:hover::before {
     visibility: visible;
     opacity: 1;
-    transform: translateX(-50%) translateY(0); /* Sobe para a posição final */
+    transform: translateX(-50%) translateY(0);
 }
