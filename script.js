@@ -600,7 +600,7 @@ function openMainModal(id) {
 
         if (item.logic === 'menor') {
             displayStr = `${pctStr} do Limite`;
-            descStr = `Cálculo: (Valor Utilizado / Limite) * 100. \nbateu ${pctStr} do limite máximo permitido.`;
+            descStr = `Cálculo: (Valor Utilizado / Limite) * 100. \n O indicador bateu ${pctStr} do limite máximo permitido.`;
         } else {
             displayStr = `${pctStr} da Meta`;
             descStr = `Cálculo: (Valor Realizado / Meta) * 100. \nIndica que você atingiu ${pctStr} da meta estabelecida.`;
