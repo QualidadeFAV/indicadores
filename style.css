@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - STYLE V88 FINAL
- * Features: Indicadores Centralizados + Dark/Light + Cascata + Fix Ícone
+/* * FAV ANALYTICS - STYLE V98 FINAL
+ * Features: Hierarquia Visual (Label -> Value -> Context) + Tooltips
  */
 
 :root {
@@ -8,7 +8,7 @@
     --bg-panel: #18181b;      
     --bg-elevated: #27272a;   
     
-    /* Cor do Header da Tabela (Restaurada para V74) */
+    /* Cor do Header da Tabela */
     --bg-table-header: #1f1f22; 
     
     --border: #27272a;        
@@ -331,24 +331,43 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
 .stat-card {
     background: var(--bg-panel); border: 1px solid var(--border);
     padding: 10px 5px; border-radius: 10px; text-align: center;
-    display: flex; flex-direction: column; justify-content: center;
+    display: flex; flex-direction: column; 
+    justify-content: center;
+    gap: 4px; /* GAP central para espaçamento uniforme */
 }
 
 .stat-val {
-    font-size: 1.1rem; font-weight: 700; color: var(--text-main); margin-bottom: 3px;
+    font-size: 1.1rem; font-weight: 700; color: var(--text-main); 
+    margin: 0; 
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* SUB-STAT: Usado para Porcentagem da Meta e Badges */
+.sub-stat {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    opacity: 0.8;
+    margin: 0;
+    white-space: nowrap;
+    cursor: help; /* Cursor indicando tooltip */
+}
+.sub-stat:hover {
+    color: var(--accent);
+    opacity: 1;
 }
 
 .stat-label {
     font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;
     font-weight: 600; letter-spacing: 0.5px;
+    margin: 0; 
 }
 
 .stat-card.bordered { border-color: var(--border); }
 .stat-val.accent { color: var(--accent); }
 
 .logic-badge {
-    font-size: 0.6rem; color: var(--text-muted); margin-top: 4px;
+    font-size: 0.6rem; color: var(--text-muted); 
     background: rgba(125,125,125,0.1); padding: 2px 6px;
     border-radius: 4px; display: inline-block; align-self: center;
 }

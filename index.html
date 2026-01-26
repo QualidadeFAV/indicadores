@@ -140,28 +140,36 @@
                 
                 <div id="mode-view">
                     <div class="stats-row">
+                        
                         <div class="stat-card">
-                            <div class="stat-val accent" id="viewMetaDisplay">-</div>
                             <div class="stat-label">Meta Alvo</div>
+                            <div class="stat-val accent" id="viewMetaDisplay">-</div>
                             <div id="viewLogicBadge" class="logic-badge">-</div>
                         </div>
+
                         <div class="stat-card">
-                            <div class="stat-val" id="viewLast">-</div>
                             <div class="stat-label">Último</div>
+                            <div class="stat-val" id="viewLast">-</div>
+                            <div id="viewLastPct" class="sub-stat">-</div>
                         </div>
+
                         <div class="stat-card">
-                            <div class="stat-val" id="viewAvg">-</div>
                             <div class="stat-label">Média</div>
+                            <div class="stat-val" id="viewAvg">-</div>
+                            <div id="viewAvgPct" class="sub-stat">-</div>
                         </div>
+
                         <div class="stat-card">
-                            <div class="stat-val" id="viewTarget" style="color:var(--good)">-</div>
-                            <div class="stat-label">Batida %</div>
-                        </div>
+                            <div class="stat-label">Consistência</div>
+                            <div class="stat-val" id="viewTarget" style="color:var(--good); cursor:help">-</div>
+                            </div>
+
                         <div class="stat-card bordered" style="border-color:var(--border)">
-                            <div class="stat-val" id="viewPunc" style="font-size:1.4rem">-</div>
                             <div class="stat-label">Pontualidade</div>
-                            <div id="puncBadge" style="margin-top:5px; font-size:0.7rem"></div>
+                            <div class="stat-val" id="viewPunc" style="font-size:1.4rem">-</div>
+                            <div id="puncBadge" style="margin-top:2px; font-size:0.7rem"></div>
                         </div>
+
                     </div>
                     
                     <div class="chart-wrapper">
@@ -281,9 +289,6 @@
                 </button>
                 <button class="btn-option" onclick="generateExport('excel')">
                     <i data-lucide="sheet"></i> Planilha Editável (Excel)
-                </button>
-                <button class="btn-option" onclick="generateExport('visual-pdf')">
-                    <i data-lucide="pie-chart"></i> Relatório Visual (Gráficos)
                 </button>
             </div>
         </div>

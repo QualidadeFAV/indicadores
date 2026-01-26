@@ -1,9 +1,10 @@
-/* * FAV ANALYTICS - CORE V92 FINAL
- * Features: Fix Flicker Modal + Todas as correções anteriores (V89/V91)
+/* * FAV ANALYTICS - CORE V98 FINAL
+ * Features: Tooltips Descritivos (Hover) + Fix Centralização Batida %
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
 
+// Inicializa ícones
 lucide.createIcons();
 const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
@@ -12,7 +13,6 @@ let fullDB = { "2025": [], "2026": [] };
 let currentYear = '2025';
 let currentSector = 'Todos';
 let currentView = 'table';
-// Carrega tema salvo ou usa 'dark' como padrão
 let currentTheme = localStorage.getItem('fav_theme') || 'dark';
 let deadlineDay = parseInt(localStorage.getItem('fav_deadline')) || 15;
 let charts = {}; 
@@ -23,7 +23,6 @@ let statusChartMode = 'last';
 
 // --- INICIALIZAÇÃO ---
 window.onload = () => {
-    // animate = false no load inicial para não girar o ícone sem motivo
     applyTheme(currentTheme, false); 
     loadData();
 };
@@ -65,8 +64,6 @@ async function saveData() {
 function toggleTheme() {
     currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
     localStorage.setItem('fav_theme', currentTheme);
-    
-    // animate = true, pois foi uma ação do usuário (clique)
     applyTheme(currentTheme, true);
     
     // Recarrega gráficos se estiverem visíveis para pegar novas cores
@@ -77,19 +74,12 @@ function toggleTheme() {
 
 function applyTheme(theme, animate = false) {
     document.body.setAttribute('data-theme', theme);
-    
     const btn = document.querySelector('button[onclick="toggleTheme()"]');
     if (btn) {
         const iconName = theme === 'light' ? 'moon' : 'sun';
-        
-        // Adiciona a classe .icon-spin se animate for true
         const className = animate ? 'icon-spin' : '';
-        
-        // Recria o HTML para o Lucide processar
         btn.innerHTML = `<i id="theme-icon" class="${className}" data-lucide="${iconName}"></i>`;
         lucide.createIcons();
-
-        // Remove a classe de animação após 600ms para evitar loop ao trocar ano
         if (animate) {
             setTimeout(() => {
                 const icon = document.getElementById('theme-icon');
@@ -102,7 +92,6 @@ function applyTheme(theme, animate = false) {
 // --- RENDERIZAÇÃO ---
 function renderApp(filter = currentSector) {
     populateSectorFilter();
-    
     const data = fullDB[currentYear] || [];
     const filtered = filter === 'Todos' ? data : data.filter(i => i.sector === filter);
 
@@ -119,25 +108,19 @@ function renderApp(filter = currentSector) {
     lucide.createIcons();
 }
 
-// --- LÓGICA DE PONTUALIDADE (DATA RÍGIDA) ---
+// --- LÓGICA DE PONTUALIDADE ---
 function checkOnTime(dateStr, monthIdx) {
     if (!dateStr) return false;
-    
     const delivery = new Date(dateStr + "T12:00:00");
     const curYear = parseInt(currentYear);
-
-    // Data Mínima: 1º dia do Mês de Referência
     const minDate = new Date(curYear, monthIdx, 1, 0, 0, 0);
-
-    // Data Limite: Dia 'deadlineDay' do Mês Seguinte
+    
     let limitYear = curYear;
     let limitMonth = monthIdx + 1; 
-    
     if (limitMonth > 11) {
         limitMonth = 0; 
         limitYear++;
     }
-    
     const limitDate = new Date(limitYear, limitMonth, deadlineDay, 23, 59, 59);
     
     return delivery >= minDate && delivery <= limitDate;
@@ -146,7 +129,6 @@ function checkOnTime(dateStr, monthIdx) {
 // --- STATUS ---
 function getStatus(val, meta, logic, fmt) {
     if (val === null || val === "" || val === "NaN") return "empty";
-    
     let v, m;
     
     if (fmt === 'time') {
@@ -255,7 +237,7 @@ function updateKPIs(data) {
     setText('kpi-crit', countCrit);
 }
 
-// --- TABELA (META DETALHADA E CASCATA) ---
+// --- TABELA ---
 function renderTable(data) {
     const tbody = document.getElementById('table-body');
     const emptyState = document.getElementById('empty-state');
@@ -289,7 +271,6 @@ function renderTable(data) {
             tr.style.animationDelay = `${delayCounter * 30}ms`;
             delayCounter++;
             
-            // Lógica detalhada embaixo da meta
             const logicLabel = item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓';
 
             let html = `
@@ -320,15 +301,14 @@ function renderTable(data) {
     });
 }
 
-// --- GRÁFICOS EXECUTIVOS (CORES DINÂMICAS + CASCATA) ---
+// --- GRÁFICOS EXECUTIVOS ---
 function renderExecutiveCharts(data) {
     if (currentView !== 'exec') return;
     
-    // Aplica cascata nos cartões de gráfico
     const cards = document.querySelectorAll('.chart-card');
     cards.forEach((card, i) => {
         card.classList.remove('cascade-item'); 
-        void card.offsetWidth; // Force Reflow para reiniciar animação
+        void card.offsetWidth; 
         card.classList.add('cascade-item');
         card.style.animationDelay = `${i * 100}ms`;
     });
@@ -338,7 +318,6 @@ function renderExecutiveCharts(data) {
     renderPuncChart(data);
 }
 
-// Cores baseadas no tema
 function getChartColors() {
     const isDark = currentTheme === 'dark';
     return {
@@ -384,7 +363,7 @@ function renderTrendChart(data) {
                 meta.data.forEach((bar, index) => {
                     const value = dataset.data[index];
                     if (value > 0) {
-                        ctx.fillStyle = '#ffffff'; // Texto na barra sempre branco
+                        ctx.fillStyle = '#ffffff'; 
                         ctx.font = 'bold 10px Inter, sans-serif';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
@@ -574,7 +553,7 @@ function renderPuncChart(data) {
     });
 }
 
-// --- MODAL PRINCIPAL ---
+// --- MODAL PRINCIPAL (COM TOOLTIPS NOS CÁLCULOS) ---
 function openMainModal(id) {
     currentMetricId = id;
     const item = fullDB[currentYear].find(i => i.id == id);
@@ -584,21 +563,76 @@ function openMainModal(id) {
     setText('viewMetaDisplay', formatVal(item.meta, item.format));
     setText('viewLogicBadge', item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓');
 
+    // Preparar meta numérica
+    let nMeta = 0;
+    if (item.format === 'time') {
+        nMeta = timeToDec(item.meta);
+    } else {
+        nMeta = parseFloat(String(item.meta).replace(',', '.'));
+    }
+
+    // Helper: Texto + Tooltip
+    const setStatWithTooltip = (elementId, valNum, contextLabel) => {
+        const el = document.getElementById(elementId);
+        if (!el) return;
+
+        if (!nMeta || isNaN(nMeta) || isNaN(valNum) || nMeta === 0) {
+            el.innerText = '-';
+            el.title = '';
+            return;
+        }
+
+        const pct = (valNum / nMeta) * 100;
+        const pctStr = pct.toFixed(1) + '%';
+        let displayStr = '';
+        let descStr = '';
+
+        if (item.logic === 'menor') {
+            displayStr = `${pctStr} do Limite`;
+            descStr = `Cálculo: (Valor Utilizado / Limite) * 100. \nIndica que você consumiu ${pctStr} do limite máximo permitido.`;
+        } else {
+            displayStr = `${pctStr} da Meta`;
+            descStr = `Cálculo: (Valor Realizado / Meta) * 100. \nIndica que você atingiu ${pctStr} da meta estabelecida.`;
+        }
+
+        el.innerText = displayStr;
+        el.title = descStr; // Define tooltip
+    };
+
     const valid = item.data.filter(v => v !== null && v !== "");
+    
     if (valid.length > 0) {
         const last = valid[valid.length - 1];
         let hits = 0;
-        
         valid.forEach(v => {
             const s = getStatus(v, item.meta, item.logic, item.format);
             if (s === 'good') hits++;
         });
 
         setText('viewLast', formatVal(last, item.format));
-        setText('viewTarget', Math.round((hits / valid.length) * 100) + '%');
+        
+        // --- Tooltip no Último ---
+        let nLast = item.format === 'time' ? timeToDec(last) : parseFloat(String(last).replace(',', '.'));
+        setStatWithTooltip('viewLastPct', nLast, 'Último');
+        // -------------------------
+
+        // --- CÁLCULO TARGET COM TOOLTIP ---
+        const targetEl = document.getElementById('viewTarget');
+        if (valid.length > 0) {
+            const pctBatida = Math.round((hits / valid.length) * 100);
+            targetEl.innerText = pctBatida + '%';
+            
+            // Descrição da Regra
+            targetEl.title = `Regra: (Meses na Meta / Meses Lançados) * 100.\nIndica a consistência: de ${valid.length} meses lançados, a meta foi atingida em ${hits}.`;
+        } else {
+            targetEl.innerText = "-";
+            targetEl.title = "";
+        }
+        // ----------------------------------
         
         if (item.format === 'time') {
             setText('viewAvg', "-");
+            setText('viewAvgPct', "-");
         } else {
             const values = valid.map(v => parseFloat(String(v).replace(',', '.'))).filter(n => !isNaN(n));
             
@@ -606,13 +640,21 @@ function openMainModal(id) {
                 const sum = values.reduce((a, b) => a + b, 0);
                 const avg = sum / values.length;
                 setText('viewAvg', formatVal(avg, item.format));
+
+                // --- Tooltip na Média ---
+                setStatWithTooltip('viewAvgPct', avg, 'Média');
+                // ------------------------
+
             } else {
                 setText('viewAvg', "-");
+                setText('viewAvgPct', "-");
             }
         }
     } else {
         setText('viewLast', "-");
+        setText('viewLastPct', "-");
         setText('viewAvg', "-");
+        setText('viewAvgPct', "-");
         setText('viewTarget', "-");
     }
 
@@ -636,14 +678,10 @@ function openMainModal(id) {
     }
 
     renderTimeline(item);
-    // CORREÇÃO: Removi a chamada duplicada que causava o flicker
-    // renderDetailChart(item); <-- Removido
     populateEditForm(item);
 
     switchToViewMode();
     document.getElementById('mainModal').classList.add('open');
-    
-    // A única chamada válida, após o modal abrir
     setTimeout(() => renderDetailChart(item), 100); 
 }
 
@@ -879,7 +917,7 @@ function generateExport(type) {
             const options = {
                 scale: 2,
                 useCORS: true, 
-                backgroundColor: currentTheme === 'light' ? '#ffffff' : '#09090b', // Ajuste para PDF no tema
+                backgroundColor: currentTheme === 'light' ? '#ffffff' : '#09090b',
                 logging: false,
                 onclone: function(clonedDoc) {
                     const clonedChartsArea = clonedDoc.getElementById('charts-area');
@@ -916,7 +954,6 @@ function generateExport(type) {
                 const imgWidth = pageWidth - 20; 
                 const imgHeight = (canvas.height * imgWidth) / canvas.width;
                 
-                // Fundo do PDF baseado no tema
                 if (currentTheme === 'dark') {
                     doc.setFillColor(9, 9, 11);
                     doc.rect(0, 0, pageWidth, pageHeight, 'F');
