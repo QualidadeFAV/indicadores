@@ -1,8 +1,9 @@
-/* * FAV ANALYTICS - CORE V100 FINAL
- * Features: Custom Tooltips (Data Attribute) + Title Fix
+/* * FAV ANALYTICS - CORE V119 FINAL (SILENT MODE)
+ * Features: Minimal Notifications + Separate Tab + Auto Draft
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
+const DRAFT_KEY = 'fav_analysis_draft'; 
 
 // Inicializa ícones
 lucide.createIcons();
@@ -21,52 +22,164 @@ let currentMetricId = null;
 let isNewSectorMode = false;
 let statusChartMode = 'last'; 
 
+// Variável para armazenar as análises (Sincronizado com BD_ANALISES)
+let analysisDB = {}; 
+let activeAnalysis = { id: null, idx: null };
+
 // --- INICIALIZAÇÃO ---
 window.onload = () => {
     applyTheme(currentTheme, false); 
     loadData();
+    setupOutsideClick();
+    setupDraftAutoSave(); 
 };
 
+// --- RASCUNHO AUTOMÁTICO (LOCAL & SILENCIOSO) ---
+function setupDraftAutoSave() {
+    const fields = ['ana-critical', 'ana-cause', 'ana-plan', 'ana-responsible', 'ana-next-meta'];
+    
+    fields.forEach(fieldId => {
+        const el = document.getElementById(fieldId);
+        if(el) {
+            el.addEventListener('input', () => {
+                if (activeAnalysis.id !== null && activeAnalysis.idx !== null) {
+                    const draftData = {
+                        id: activeAnalysis.id,
+                        idx: activeAnalysis.idx,
+                        year: currentYear,
+                        data: {
+                            analiseCritica: document.getElementById('ana-critical').value,
+                            causa: document.getElementById('ana-cause').value,
+                            planoAcao: document.getElementById('ana-plan').value,
+                            responsavel: document.getElementById('ana-responsible').value,
+                            metaProximoMes: document.getElementById('ana-next-meta').value
+                        },
+                        timestamp: Date.now()
+                    };
+                    
+                    const isEmpty = Object.values(draftData.data).every(val => val.trim() === '');
+                    
+                    if (isEmpty) {
+                        localStorage.removeItem(DRAFT_KEY);
+                    } else {
+                        localStorage.setItem(DRAFT_KEY, JSON.stringify(draftData));
+                    }
+                }
+            });
+        }
+    });
+}
+
+// --- FECHAR AO CLICAR FORA ---
+function setupOutsideClick() {
+    document.querySelectorAll('.modal-overlay').forEach(overlay => {
+        let isMouseDownInside = false;
+        
+        overlay.addEventListener('mousedown', (e) => {
+            isMouseDownInside = (e.target !== overlay);
+        });
+
+        overlay.addEventListener('click', (e) => {
+            if (!isMouseDownInside && e.target === overlay) {
+                if(overlay.id === 'analysisModal' && currentView === 'table') {
+                    renderTable(fullDB[currentYear]);
+                }
+                closeModal(overlay.id);
+            }
+        });
+    });
+}
+
+// --- CARREGAMENTO DE DADOS ---
 async function loadData() {
     toggleLoading(true);
     try {
         const res = await fetch(API_URL);
         const data = await res.json();
         
-        if (Array.isArray(data)) {
-            fullDB["2025"] = data;
-            fullDB["2026"] = [];
+        if (data["2025"]) fullDB["2025"] = data["2025"];
+        if (data["2026"]) fullDB["2026"] = data["2026"];
+        
+        if (data["analysis"]) {
+            analysisDB = data["analysis"];
         } else {
-            fullDB = data;
-            if (!fullDB["2025"]) fullDB["2025"] = [];
-            if (!fullDB["2026"]) fullDB["2026"] = [];
+            analysisDB = {};
         }
+
         renderApp();
     } catch (e) {
         console.error(e);
-        showToast("Modo Offline (Erro Conexão)", "error");
+        showToast("Modo Offline", "error");
     } finally {
         toggleLoading(false);
     }
 }
 
+// --- SALVAMENTO GERAL (APENAS NÚMEROS) ---
 async function saveData() {
-    showToast("Salvando...", "wait");
+    // SEM TOAST AQUI (Silencioso)
+    const payload = {
+        "2025": fullDB["2025"],
+        "2026": fullDB["2026"]
+    };
     try {
-        await fetch(API_URL, { method: 'POST', body: JSON.stringify(fullDB) });
-        showToast("Sincronizado!");
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
     } catch (e) {
-        showToast("Erro ao salvar!", "error");
+        showToast("Erro ao salvar", "error");
     }
 }
 
-// --- TEMA (ANIMAÇÃO CONTROLADA) ---
+// --- SALVAMENTO ESPECÍFICO DE ANÁLISE ---
+async function saveAnalysisToCloud(id, year, monthIdx, dataObj) {
+    const item = fullDB[year].find(i => i.id == id);
+    const itemName = item ? item.name : "Indicador";
+
+    const payload = {
+        type: "save_analysis",
+        data: {
+            id: id,
+            name: itemName,
+            year: year,
+            monthIdx: monthIdx,
+            data: dataObj
+        }
+    };
+
+    try {
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+        // SEM TOAST AQUI (Silencioso)
+    } catch (e) {
+        console.error(e);
+        showToast("Erro ao gravar", "error");
+    }
+}
+
+// --- EXCLUSÃO ESPECÍFICA DE ANÁLISE ---
+async function deleteAnalysisFromCloud(id, year, monthIdx) {
+    const payload = {
+        type: "delete_analysis",
+        data: {
+            id: id,
+            year: year,
+            monthIdx: monthIdx
+        }
+    };
+
+    try {
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+        // SEM TOAST AQUI (Silencioso)
+    } catch (e) {
+        console.error(e);
+        showToast("Erro ao excluir", "error");
+    }
+}
+
+// --- INTERFACE E LÓGICA ---
+
 function toggleTheme() {
     currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
     localStorage.setItem('fav_theme', currentTheme);
     applyTheme(currentTheme, true);
-    
-    // Recarrega gráficos se estiverem visíveis para pegar novas cores
     if (currentView === 'exec') {
         renderApp(); 
     }
@@ -89,13 +202,11 @@ function applyTheme(theme, animate = false) {
     }
 }
 
-// --- RENDERIZAÇÃO ---
 function renderApp(filter = currentSector) {
     populateSectorFilter();
     const data = fullDB[currentYear] || [];
     const filtered = filter === 'Todos' ? data : data.filter(i => i.sector === filter);
 
-    // --- LÓGICA DO TÍTULO DINÂMICO ---
     const perfLabel = document.getElementById('kpi-perf-label');
     if (perfLabel) {
         if (filter === 'Todos') {
@@ -104,7 +215,6 @@ function renderApp(filter = currentSector) {
             perfLabel.innerText = "Performance " + filter;
         }
     }
-    // ----------------------------------
 
     updateKPIs(filtered);
 
@@ -119,7 +229,6 @@ function renderApp(filter = currentSector) {
     lucide.createIcons();
 }
 
-// --- LÓGICA DE PONTUALIDADE ---
 function checkOnTime(dateStr, monthIdx) {
     if (!dateStr) return false;
     const delivery = new Date(dateStr + "T12:00:00");
@@ -137,7 +246,6 @@ function checkOnTime(dateStr, monthIdx) {
     return delivery >= minDate && delivery <= limitDate;
 }
 
-// --- STATUS ---
 function getStatus(val, meta, logic, fmt) {
     if (val === null || val === "" || val === "NaN") return "empty";
     let v, m;
@@ -161,7 +269,6 @@ function getStatus(val, meta, logic, fmt) {
     }
 }
 
-// --- FORMATADORES ---
 function formatVal(v, f) {
     if (v === null || v === undefined || v === "" || v === "NaN") return "-";
     
@@ -210,14 +317,12 @@ function timeToDec(t) {
     return NaN; 
 }
 
-// --- KPIs ---
 function updateKPIs(data) {
     let totalPerf = 0, hitsPerf = 0;
     let countCrit = 0;
     let puncTotal = 0, puncHits = 0;
 
     data.forEach(item => {
-        // Performance
         item.data.forEach(val => {
             if (val !== null && val !== "") {
                 const st = getStatus(val, item.meta, item.logic, item.format);
@@ -229,7 +334,6 @@ function updateKPIs(data) {
             }
         });
 
-        // Pontualidade
         if (item.dates) {
             item.dates.forEach((d, i) => {
                 if (item.data[i] !== null && item.data[i] !== "") {
@@ -248,7 +352,6 @@ function updateKPIs(data) {
     setText('kpi-crit', countCrit);
 }
 
-// --- TABELA ---
 function renderTable(data) {
     const tbody = document.getElementById('table-body');
     const emptyState = document.getElementById('empty-state');
@@ -302,7 +405,13 @@ function renderTable(data) {
                 if (status === 'good') cls = 'cell-good';
                 else if (status === 'bad') cls = 'cell-bad';
 
-                html += `<td class="${cls}" onclick="openMonthModal(${item.id}, ${i})">
+                const hasAnalysis = getAnalysis(item.id, currentYear, i) !== null;
+                const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));
+                const hasDraft = (draft && draft.id === item.id && draft.idx === i && draft.year === currentYear);
+
+                const analysisClass = (hasAnalysis || hasDraft) ? ' has-analysis' : '';
+
+                html += `<td class="${cls}${analysisClass}" onclick="openAnalysisModal(${item.id}, ${i})">
                     ${formatVal(val, item.format)}
                 </td>`;
             }
@@ -312,7 +421,6 @@ function renderTable(data) {
     });
 }
 
-// --- GRÁFICOS EXECUTIVOS ---
 function renderExecutiveCharts(data) {
     if (currentView !== 'exec') return;
     
@@ -570,11 +678,15 @@ function openMainModal(id) {
     const item = fullDB[currentYear].find(i => i.id == id);
     if (!item) return;
 
+    if (chartInstance) {
+        chartInstance.destroy();
+        chartInstance = null;
+    }
+
     setText('modalTitle', item.name);
     setText('viewMetaDisplay', formatVal(item.meta, item.format));
     setText('viewLogicBadge', item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓');
 
-    // Preparar meta numérica
     let nMeta = 0;
     if (item.format === 'time') {
         nMeta = timeToDec(item.meta);
@@ -582,14 +694,13 @@ function openMainModal(id) {
         nMeta = parseFloat(String(item.meta).replace(',', '.'));
     }
 
-    // Helper: Texto + Custom Tooltip (data-tooltip)
     const setStatWithTooltip = (elementId, valNum, contextLabel) => {
         const el = document.getElementById(elementId);
         if (!el) return;
 
         if (!nMeta || isNaN(nMeta) || isNaN(valNum) || nMeta === 0) {
             el.innerText = '-';
-            el.removeAttribute('data-tooltip'); // Remove tooltip se não tiver dados
+            el.removeAttribute('data-tooltip'); 
             return;
         }
 
@@ -607,7 +718,7 @@ function openMainModal(id) {
         }
 
         el.innerText = displayStr;
-        el.setAttribute('data-tooltip', descStr); // Usa o atributo para o CSS ler
+        el.setAttribute('data-tooltip', descStr); 
     };
 
     const valid = item.data.filter(v => v !== null && v !== "");
@@ -621,26 +732,19 @@ function openMainModal(id) {
         });
 
         setText('viewLast', formatVal(last, item.format));
-        
-        // --- Tooltip no Último ---
         let nLast = item.format === 'time' ? timeToDec(last) : parseFloat(String(last).replace(',', '.'));
         setStatWithTooltip('viewLastPct', nLast, 'Último');
-        // -------------------------
 
-        // --- CÁLCULO CONSISTÊNCIA COM TOOLTIP ---
         const targetEl = document.getElementById('viewTarget');
         if (valid.length > 0) {
             const pctBatida = Math.round((hits / valid.length) * 100);
             targetEl.innerText = pctBatida + '%';
-            
-            // Descrição da Regra via data-tooltip
             const tooltipText = `Regra: (Meses na Meta / Meses Lançados) * 100.\nIndica a consistência: de ${valid.length} meses lançados, a meta foi atingida em ${hits}.`;
             targetEl.setAttribute('data-tooltip', tooltipText);
         } else {
             targetEl.innerText = "-";
             targetEl.removeAttribute('data-tooltip');
         }
-        // ----------------------------------
         
         if (item.format === 'time') {
             setText('viewAvg', "-");
@@ -652,11 +756,7 @@ function openMainModal(id) {
                 const sum = values.reduce((a, b) => a + b, 0);
                 const avg = sum / values.length;
                 setText('viewAvg', formatVal(avg, item.format));
-
-                // --- Tooltip na Média ---
                 setStatWithTooltip('viewAvgPct', avg, 'Média');
-                // ------------------------
-
             } else {
                 setText('viewAvg', "-");
                 setText('viewAvgPct', "-");
@@ -694,7 +794,9 @@ function openMainModal(id) {
 
     switchToViewMode();
     document.getElementById('mainModal').classList.add('open');
-    setTimeout(() => renderDetailChart(item), 100); 
+    
+    // FIX: Delay reduzido para 250ms
+    setTimeout(() => renderDetailChart(item), 450); 
 }
 
 function renderTimeline(item) {
@@ -710,16 +812,10 @@ function renderTimeline(item) {
             let tip = 'Entregue';
 
             if (dateStr) {
-                if (checkOnTime(dateStr, i)) { 
-                    cls += ' ok';  
-                    tip = 'No Prazo'; 
-                } else { 
-                    cls += ' late'; 
-                    tip = 'Atrasado'; 
-                }
+                if (checkOnTime(dateStr, i)) { cls += ' ok';  tip = 'No Prazo'; } 
+                else { cls += ' late'; tip = 'Atrasado'; }
             } else {
-                cls += ' empty'; 
-                tip = 'Sem data'; 
+                cls += ' empty'; tip = 'Sem data'; 
             }
             
             h += `<div class="timeline-item" title="${months[i]}: ${tip}">
@@ -842,14 +938,11 @@ function generateExport(type) {
         const pdfRowMap = {}; 
         let currentRowIndex = 0;
 
-        const sectors = currentSector === 'Todos' 
-            ? [...new Set(fullDB[currentYear].map(i => i.sector))].sort() 
-            : [currentSector];
+        const sectors = currentSector === 'Todos' ? [...new Set(fullDB[currentYear].map(i => i.sector))].sort() : [currentSector];
 
         sectors.forEach(sec => {
             rows.push([{ 
-                content: sec, 
-                colSpan: 14, 
+                content: sec, colSpan: 14, 
                 styles: { fillColor: [228, 228, 231], textColor: [24, 24, 27], fontStyle: 'bold', halign: 'left' } 
             }]);
             pdfRowMap[currentRowIndex] = null; 
@@ -858,8 +951,7 @@ function generateExport(type) {
             const items = fullDB[currentYear].filter(i => i.sector === sec);
             items.forEach(item => {
                 rows.push([
-                    item.name, 
-                    formatVal(item.meta, item.format), 
+                    item.name, formatVal(item.meta, item.format), 
                     ...item.data.map(v => formatVal(v, item.format))
                 ]);
                 pdfRowMap[currentRowIndex] = item; 
@@ -871,18 +963,8 @@ function generateExport(type) {
             head: [['Indicador', 'Meta', ...months]],
             body: rows,
             startY: 35,
-            styles: { 
-                fontSize: 7, 
-                cellPadding: 2, 
-                lineColor: 200, 
-                lineWidth: 0.1,
-                halign: 'center', 
-                valign: 'middle'  
-            },
-            headStyles: { 
-                fillColor: [59, 130, 246],
-                halign: 'center'
-            },
+            styles: { fontSize: 7, cellPadding: 2, lineColor: 200, lineWidth: 0.1, halign: 'center', valign: 'middle' },
+            headStyles: { fillColor: [59, 130, 246], halign: 'center' },
             didParseCell: function(dataCell) {
                 if (dataCell.section === 'body' && dataCell.column.index >= 2) {
                     const rowIndex = dataCell.row.index;
@@ -927,8 +1009,7 @@ function generateExport(type) {
         setTimeout(() => {
             const element = document.getElementById('charts-area');
             const options = {
-                scale: 2,
-                useCORS: true, 
+                scale: 2, useCORS: true, 
                 backgroundColor: currentTheme === 'light' ? '#ffffff' : '#09090b',
                 logging: false,
                 onclone: function(clonedDoc) {
@@ -1015,29 +1096,6 @@ function generateExport(type) {
     }
 }
 
-function openMonthModal(id, idx) {
-    const item = fullDB[currentYear].find(i => i.id == id);
-    if (!item) return;
-
-    const val = item.data[idx];
-    const status = getStatus(val, item.meta, item.logic, item.format);
-    
-    setText('monthModalTitle', `${months[idx]} - ${item.name}`);
-    setText('monthValue', formatVal(val, item.format));
-    
-    const colors = { good: 'var(--good)', bad: 'var(--bad)', 'empty': '#fff' };
-    document.getElementById('monthValue').style.color = colors[status];
-    
-    const txts = { good: 'Meta Batida', bad: 'Não Batida', 'empty': 'Sem Dados' };
-    setText('monthStatus', txts[status]);
-    document.getElementById('monthStatus').style.color = colors[status];
-    
-    setText('monthMeta', formatVal(item.meta, item.format));
-    setText('monthDelivery', item.dates[idx] ? item.dates[idx].split('-').reverse().join('/') : 'Pendente');
-    
-    document.getElementById('monthModal').classList.add('open');
-}
-
 function renderDetailChart(item) {
     const ctx = document.getElementById('detailChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
@@ -1068,7 +1126,7 @@ function renderDetailChart(item) {
                 tension: 0.3, 
                 fill: true,   
                 pointRadius: 4,
-                pointBackgroundColor: colors.bg, // Dinâmico
+                pointBackgroundColor: colors.bg, 
                 pointBorderColor: '#3b82f6'
             }, { 
                 label: 'Meta', 
@@ -1086,6 +1144,13 @@ function renderDetailChart(item) {
                 padding: { left: 0, right: 0, top: 10, bottom: 0 } 
             },
             plugins: { legend: { display: false } },
+            // Permite clicar no mês do gráfico para abrir a análise
+            onClick: (e, elements) => {
+                if (elements.length > 0) {
+                    const idx = elements[0].index;
+                    openAnalysisModal(item.id, elements[0].index);
+                }
+            },
             scales: {
                 x: { 
                     grid: { display: false },
@@ -1152,3 +1217,290 @@ function setText(id, txt) { const el = document.getElementById(id); if(el) el.in
 function configDeadline() { const n = prompt("Novo dia limite (Ex: 15):", deadlineDay); if(n && !isNaN(n)) { deadlineDay = parseInt(n); localStorage.setItem('fav_deadline', deadlineDay); renderApp(); } }
 function importFrom2025() { if(confirm("Deseja importar?")) { fullDB['2026'] = fullDB['2025'].map(i => ({...i, id: Date.now()+Math.random(), data: Array(12).fill(null), dates: Array(12).fill(null)})); saveData(); renderApp(); } }
 function deleteItem() { if(confirm("Excluir?")) { fullDB[currentYear] = fullDB[currentYear].filter(i=>i.id!=currentMetricId); saveData(); closeModal('mainModal'); renderApp(); } }
+
+
+/* =================================================================
+   ADD-ON: ANÁLISE GERENCIAL (MANAGER ANALYTICS V2)
+   ================================================================= */
+
+function loadAnalysisData() {
+    const stored = localStorage.getItem('fav_analysis');
+    if (stored) {
+        analysisDB = JSON.parse(stored);
+    }
+}
+
+// --- MODIFICADO: Função Open com Verificação de Rascunho ---
+function openAnalysisModal(id, idx) {
+    const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));
+    let targetId = id;
+    let targetIdx = idx;
+    let usingDraft = false;
+
+    // Se existe rascunho do ano atual
+    if (draft && draft.year === currentYear) {
+        // Se o rascunho é para OUTRO item, avisa
+        if (draft.id !== id || draft.idx !== idx) {
+            const itemDraft = fullDB[currentYear].find(i => i.id == draft.id);
+            const nomeDraft = itemDraft ? itemDraft.name : "Indicador desconhecido";
+            const mesDraft = months[draft.idx];
+
+            if (confirm(`Você tem um rascunho pendente em:\n"${nomeDraft}" (${mesDraft}).\n\nDeseja retomar esse rascunho?\n[OK] Sim, ir para o rascunho.\n[Cancelar] Não, descartar e abrir o novo.`)) {
+                // Redireciona para o rascunho
+                targetId = draft.id;
+                targetIdx = draft.idx;
+                usingDraft = true;
+            } else {
+                // Descarta e segue para o novo
+                localStorage.removeItem(DRAFT_KEY);
+                usingDraft = false;
+            }
+        } else {
+            // Se o rascunho é para o MESMO item, carrega automaticamente
+            usingDraft = true;
+        }
+    }
+
+    activeAnalysis = { id: targetId, idx: targetIdx };
+    const item = fullDB[currentYear].find(i => i.id == targetId);
+    if (!item) return;
+
+    // Dados básicos
+    setText('analysisName', item.name);
+    setText('analysisPeriodLabel', `${months[targetIdx]}/${currentYear}`);
+    
+    // Valor e Badge de Desvio (Lógica mantida V109)
+    const val = item.data[targetIdx];
+    setText('analysisValue', formatVal(val, item.format));
+    const currentStatus = getStatus(val, item.meta, item.logic, item.format);
+    const valEl = document.getElementById('analysisValue');
+    valEl.className = 'val-neutral'; valEl.style.fontSize = '1.4rem'; valEl.style.fontWeight = '700';
+    if (currentStatus === 'good') valEl.classList.add('val-good'); else if (currentStatus === 'bad') valEl.classList.add('val-bad');
+
+    let devBadge = document.getElementById('analysisDeviationBadge');
+    if (!devBadge) { devBadge = document.createElement('span'); devBadge.id = 'analysisDeviationBadge'; devBadge.style.fontSize = '0.75rem'; devBadge.style.marginLeft = '10px'; devBadge.style.padding = '2px 8px'; devBadge.style.borderRadius = '4px'; devBadge.style.fontWeight = '600'; valEl.parentNode.appendChild(devBadge); }
+    const valNum = item.format === 'time' ? timeToDec(val) : parseFloat(String(val).replace(',', '.'));
+    const metaNum = item.format === 'time' ? timeToDec(item.meta) : parseFloat(String(item.meta).replace(',', '.'));
+    if (!isNaN(valNum) && !isNaN(metaNum) && metaNum !== 0) {
+        const diff = valNum - metaNum; const pctDev = (diff / metaNum) * 100; const signal = pctDev > 0 ? '+' : '';
+        devBadge.innerText = `${signal}${pctDev.toFixed(1)}% da Meta`;
+        const isGood = item.logic === 'maior' ? diff >= 0 : diff <= 0;
+        devBadge.style.backgroundColor = isGood ? 'var(--good-bg)' : 'var(--bad-bg)'; devBadge.style.color = isGood ? 'var(--good)' : 'var(--bad)'; devBadge.style.display = 'inline-block';
+    } else { devBadge.style.display = 'none'; }
+
+    // Bloco de Revisão (Lógica mantida V109)
+    const prevBlock = document.getElementById('previousReviewBlock');
+    const prevPlanText = document.getElementById('prevPlanText');
+    const prevMetaValue = document.getElementById('prevMetaValue');
+    const prevBadge = document.getElementById('prevResultBadge');
+    
+    let prevIdx = targetIdx - 1;
+    if (prevIdx >= 0) {
+        // Busca análise no objeto carregado da nuvem (via getAnalysis)
+        const prevAnalysis = getAnalysis(targetId, currentYear, prevIdx);
+        
+        if (prevAnalysis && prevAnalysis.planoAcao) {
+            prevBlock.style.display = 'block';
+            prevPlanText.innerText = `"${prevAnalysis.planoAcao}"`;
+            prevMetaValue.innerText = prevAnalysis.metaProximoMes ? formatVal(prevAnalysis.metaProximoMes, item.format) : "N/D";
+            
+            // --- CÁLCULOS AVANÇADOS (Crescimento Real) ---
+            let htmlBadges = "";
+            let currentValNum = item.format === 'time' ? timeToDec(val) : parseFloat(String(val).replace(',', '.'));
+            
+            // 1. Verificação da Meta Estipulada (Melhora Esperada)
+            if (val !== null && val !== "" && prevAnalysis.metaProximoMes) {
+                const targetValNum = item.format === 'time' ? timeToDec(prevAnalysis.metaProximoMes) : parseFloat(String(prevAnalysis.metaProximoMes).replace(',', '.'));
+                
+                let success = false;
+                if (!isNaN(currentValNum) && !isNaN(targetValNum)) {
+                    if (item.logic === 'maior') success = currentValNum >= targetValNum;
+                    else success = currentValNum <= targetValNum;
+                }
+
+                if (success) htmlBadges += '<span class="result-badge result-success">Melhora Esperada OK</span>';
+                else htmlBadges += '<span class="result-badge result-fail">Abaixo da Expectativa</span>';
+            }
+
+            // 2. Crescimento Real
+            const prevValRaw = item.data[prevIdx];
+            if (val !== null && val !== "" && prevValRaw !== null && prevValRaw !== "") {
+                const prevValNum = item.format === 'time' ? timeToDec(prevValRaw) : parseFloat(String(prevValRaw).replace(',', '.'));
+                
+                if (!isNaN(currentValNum) && !isNaN(prevValNum) && prevValNum !== 0) {
+                    const diff = currentValNum - prevValNum;
+                    const pctDiff = (diff / prevValNum) * 100;
+                    
+                    let growthLabel = "";
+                    let growthClass = "result-neutral";
+                    const formattedDiff = pctDiff.toFixed(1) + "%";
+                    const symbol = diff > 0 ? "+" : ""; 
+
+                    if (item.logic === 'maior') {
+                        if (diff > 0) { growthLabel = `Cresceu ${symbol}${formattedDiff}`; growthClass = "result-success"; }
+                        else if (diff < 0) { growthLabel = `Caiu ${formattedDiff}`; growthClass = "result-fail"; }
+                        else { growthLabel = "Estável"; }
+                    } else { 
+                        if (diff < 0) { growthLabel = `Melhorou ${formattedDiff}`; growthClass = "result-success"; } 
+                        else if (diff > 0) { growthLabel = `Piorou ${symbol}${formattedDiff}`; growthClass = "result-fail"; }
+                        else { growthLabel = "Estável"; }
+                    }
+                    htmlBadges += `<span class="result-badge ${growthClass}">${growthLabel} vs Mês Anterior</span>`;
+                }
+            }
+            if(htmlBadges === "") htmlBadges = '<span style="color:var(--text-muted); font-size:0.7rem">Dados insuficientes para cálculo.</span>';
+            prevBadge.innerHTML = htmlBadges;
+
+        } else {
+            prevBlock.style.display = 'none';
+        }
+    } else {
+        prevBlock.style.display = 'none';
+    }
+
+    // --- CARREGAMENTO DOS CAMPOS ---
+    let dataToLoad = {};
+
+    if (usingDraft) {
+        // Carrega do Rascunho
+        const d = JSON.parse(localStorage.getItem(DRAFT_KEY));
+        dataToLoad = d.data;
+        showToast("Rascunho recuperado", "wait");
+    } else {
+        // Carrega do Banco de Dados
+        const saved = getAnalysis(targetId, currentYear, targetIdx);
+        dataToLoad = saved || { analiseCritica: '', causa: '', planoAcao: '', responsavel: '', metaProximoMes: '' };
+    }
+
+    document.getElementById('ana-critical').value = dataToLoad.analiseCritica;
+    document.getElementById('ana-cause').value = dataToLoad.causa;
+    document.getElementById('ana-plan').value = dataToLoad.planoAcao;
+    document.getElementById('ana-responsible').value = dataToLoad.responsavel;
+    document.getElementById('ana-next-meta').value = dataToLoad.metaProximoMes;
+
+    document.getElementById('analysisModal').classList.add('open');
+}
+
+// --- NOVO: Função para limpar o formulário visualmente ---
+function clearAnalysisForm() {
+    document.getElementById('ana-critical').value = '';
+    document.getElementById('ana-cause').value = '';
+    document.getElementById('ana-plan').value = '';
+    document.getElementById('ana-responsible').value = '';
+    document.getElementById('ana-next-meta').value = '';
+    document.getElementById('ana-critical').focus();
+    
+    // Remove rascunho ao limpar
+    localStorage.removeItem(DRAFT_KEY);
+    
+    // IMPORTANTE: NÃO CHAMAMOS renderTable() AQUI PARA EVITAR A PISCADA
+}
+
+function saveAnalysis() {
+    const { id, idx } = activeAnalysis;
+    if (!id && id !== 0) return;
+
+    if (!analysisDB[id]) analysisDB[id] = {};
+    if (!analysisDB[id][currentYear]) analysisDB[id][currentYear] = {};
+
+    const critica = document.getElementById('ana-critical').value;
+    const causa = document.getElementById('ana-cause').value;
+    const plano = document.getElementById('ana-plan').value;
+    const resp = document.getElementById('ana-responsible').value;
+    const meta = document.getElementById('ana-next-meta').value;
+
+    const isEmpty = !critica.trim() && !causa.trim() && !plano.trim() && !resp.trim() && !meta.trim();
+
+    // Objeto para salvar
+    const dataObj = {
+        analiseCritica: critica,
+        causa: causa,
+        planoAcao: plano,
+        responsavel: resp,
+        metaProximoMes: meta,
+        dataRegistro: new Date().toISOString()
+    };
+
+    if (isEmpty) {
+        // Se vazio, remove do objeto local (faz bolinha sumir)
+        if (analysisDB[id] && analysisDB[id][currentYear]) {
+            delete analysisDB[id][currentYear][idx];
+            if (Object.keys(analysisDB[id][currentYear]).length === 0) delete analysisDB[id][currentYear];
+        }
+        showToast("Análise removida!");
+        // CHAMA A EXCLUSÃO FÍSICA NO BACKEND
+        deleteAnalysisFromCloud(id, currentYear, idx);
+    } else {
+        // Se tem dados, salva no objeto local
+        analysisDB[id][currentYear][idx] = dataObj;
+        showToast("Análise Salva!");
+        
+        // E dispara o salvamento na nuvem (linha específica na aba BD_ANALISES)
+        saveAnalysisToCloud(id, currentYear, idx, dataObj);
+    }
+
+    // Limpa o rascunho pois foi "comitado"
+    localStorage.removeItem(DRAFT_KEY);
+    
+    // Não usamos mais localStorage para persistência final, pois usamos a nuvem
+    // Mas se quiser manter um cache local, pode descomentar:
+    // localStorage.setItem('fav_analysis', JSON.stringify(analysisDB)); 
+    
+    closeModal('analysisModal');
+    
+    // Re-renderiza a tabela para atualizar a "bolinha"
+    if(currentView === 'table') renderTable(fullDB[currentYear]);
+}
+
+// --- FUNÇÃO DE PONTE PARA SALVAR NO BACKEND (DB_ANALISES) ---
+async function saveAnalysisToCloud(id, year, monthIdx, dataObj) {
+    const item = fullDB[year].find(i => i.id == id);
+    const itemName = item ? item.name : "Indicador";
+
+    const payload = {
+        type: "save_analysis", // Comando especial para o Backend
+        data: {
+            id: id,
+            name: itemName,
+            year: year,
+            monthIdx: monthIdx,
+            data: dataObj
+        }
+    };
+
+    try {
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+        // Feedback extra opcional (pode remover se achar excessivo)
+        // showToast("Sincronizado na Planilha!", "wait");
+    } catch (e) {
+        console.error(e);
+        showToast("Erro ao gravar na nuvem (mas está local)", "error");
+    }
+}
+
+// --- EXCLUSÃO ESPECÍFICA DE ANÁLISE (NOVO) ---
+async function deleteAnalysisFromCloud(id, year, monthIdx) {
+    const payload = {
+        type: "delete_analysis",
+        data: {
+            id: id,
+            year: year,
+            monthIdx: monthIdx
+        }
+    };
+
+    try {
+        await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
+        // showToast("Removido da planilha com sucesso."); // Silencioso conforme pedido
+    } catch (e) {
+        console.error(e);
+        showToast("Erro ao excluir na nuvem", "error");
+    }
+}
+
+function getAnalysis(id, year, idx) {
+    if (analysisDB[id] && analysisDB[id][year] && analysisDB[id][year][idx]) {
+        return analysisDB[id][year][idx];
+    }
+    return null;
+}

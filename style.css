@@ -1,5 +1,5 @@
-/* * FAV ANALYTICS - STYLE V102 FINAL
- * Features: Tooltips para Baixo (Downward) + Todas as Features
+/* * FAV ANALYTICS - STYLE V106 FINAL
+ * Features: Full System + Manager Analytics UI Polish + Indicators
  */
 
 :root {
@@ -263,6 +263,7 @@ td {
     font-size: 0.85rem;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     vertical-align: middle; 
+    position: relative; /* Necessário para o indicador (bolinha) */
 }
 
 tr:last-child td { border-bottom: none; }
@@ -282,6 +283,21 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
 .cell-bad { color: var(--bad); font-weight: 700; }
 .cell-empty { opacity: 0.2; }
 
+/* --- INDICADOR DE ANÁLISE NA TABELA --- */
+/* Essa classe será adicionada via JS se houver análise no mês */
+td.has-analysis::after {
+    content: '';
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 6px;
+    height: 6px;
+    background-color: var(--accent); /* Cor do indicador (azul) */
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--bg-panel); /* Pequena borda para contraste */
+    opacity: 0.8;
+}
+
 /* Empty State */
 .empty-state {
     padding: 60px 0; text-align: center; color: var(--text-muted);
@@ -298,30 +314,48 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
 .chart-card h3 { margin: 0 0 15px 0; color: var(--text-main); font-size: 0.95rem; }
 .chart-box { position: relative; height: 280px; width: 100%; }
 
-/* --- MODAIS --- */
-.modal-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
-    backdrop-filter: blur(4px); z-index: 1000;
-    display: none; align-items: center; justify-content: center;
+/* --- MODAIS & ANIMAÇÕES --- */
+
+/* Keyframes para animação de entrada (Pop) */
+@keyframes modal-pop {
+    0% { transform: scale(0.95) translateY(10px); opacity: 0; }
+    100% { transform: scale(1) translateY(0); opacity: 1; }
 }
-.modal-overlay.open { display: flex; }
+
+.modal-overlay {
+    position: fixed; inset: 0; 
+    background: rgba(0,0,0,0.6); 
+    backdrop-filter: blur(4px);
+    z-index: 1000;
+    display: none; align-items: center; justify-content: center;
+    transition: opacity 0.3s ease;
+}
+.modal-overlay.open { display: flex; animation: fadeIn 0.3s forwards; }
 
 .modal-box {
     background: var(--bg-body);
-    border: 1px solid var(--border); border-radius: 12px;
+    border: 1px solid var(--border); 
+    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5), 0 0 0 1px var(--border);
+    border-radius: 12px;
     display: flex; flex-direction: column;
-    box-shadow: 0 25px 80px rgba(0,0,0,0.7);
     min-height: 600px;
     height: auto; 
     max-height: 90vh; 
     width: 950px; max-width: 95vw;
+    opacity: 0; 
 }
+
+.modal-overlay.open .modal-box {
+    animation: modal-pop 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
 .modal-box.small { width: 380px; max-height: none; height: auto; min-height: auto; }
 
 .modal-header {
     padding: 15px 25px; border-bottom: 1px solid var(--border);
     background: var(--bg-panel); display: flex; justify-content: space-between; align-items: center;
     flex-shrink: 0;
+    border-top-left-radius: 12px; border-top-right-radius: 12px;
 }
 .modal-header h2, .modal-header h3 { margin: 0; color: var(--text-main); font-size: 1.1rem; font-weight: 600; }
 
@@ -361,12 +395,8 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* FIX CRÍTICO: Permite que o tooltip saia da caixa da 'Consistência' */
-.stat-val[data-tooltip] {
-    overflow: visible !important;
-}
+.stat-val[data-tooltip] { overflow: visible !important; }
 
-/* SUB-STAT: Base para Tooltip */
 .sub-stat {
     font-size: 0.75rem;
     font-weight: 600;
@@ -375,12 +405,9 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     margin: 0;
     white-space: nowrap;
     cursor: help; 
-    position: relative; /* Necessário para o Tooltip */
+    position: relative; 
 }
-.sub-stat:hover {
-    color: var(--accent);
-    opacity: 1;
-}
+.sub-stat:hover { color: var(--accent); opacity: 1; }
 
 .stat-label {
     font-size: 0.65rem; color: var(--text-muted); text-transform: uppercase;
@@ -555,6 +582,8 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
 .modal-footer {
     padding: 15px 25px; background: var(--bg-panel); border-top: 1px solid var(--border);
     display: flex; justify-content: flex-end; flex-shrink: 0;
+    border-bottom-left-radius: 12px; border-bottom-right-radius: 12px;
+    gap: 15px; 
 }
 .footer-content { display: flex; gap: 10px; width: 100%; }
 .footer-content.right { justify-content: flex-end; }
@@ -666,7 +695,6 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     100% { transform: rotate(0) scale(1); opacity: 1; }
 }
 
-/* A classe será injetada e removida via JS */
 .icon-spin {
     animation: icon-spin 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
     transform-origin: center;
@@ -695,20 +723,18 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
    --- CUSTOM TOOLTIP (ABRINDO PARA BAIXO) ---
    ================================================================= */
 
-/* Elementos que tem o atributo data-tooltip */
 [data-tooltip] {
     position: relative;
     cursor: help;
 }
 
-/* O corpo da caixinha do tooltip (Para baixo) */
 [data-tooltip]::after {
     content: attr(data-tooltip);
     position: absolute;
-    top: 115%; /* Fixa para abrir embaixo */
+    top: 115%; 
     bottom: auto;
     left: 50%;
-    transform: translateX(-50%) translateY(-10px); /* Animação começando de cima */
+    transform: translateX(-50%) translateY(-10px); 
     
     background-color: var(--tooltip-bg);
     color: var(--tooltip-text);
@@ -732,7 +758,6 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     pointer-events: none;
 }
 
-/* Setinha do Tooltip (Apontando para cima) */
 [data-tooltip]::before {
     content: '';
     position: absolute;
@@ -743,7 +768,6 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     
     border-width: 6px;
     border-style: solid;
-    /* Transparente nas laterais e cor embaixo = Seta pra cima */
     border-color: transparent transparent var(--tooltip-bg) transparent;
     
     visibility: hidden;
@@ -752,10 +776,92 @@ td:hover { background: var(--bg-elevated) !important; color: var(--text-main); f
     z-index: 9999;
 }
 
-/* Hover State */
 [data-tooltip]:hover::after,
 [data-tooltip]:hover::before {
     visibility: visible;
     opacity: 1;
     transform: translateX(-50%) translateY(0);
+}
+
+/* =================================================================
+   --- ADD-ON: ANÁLISE GERENCIAL (MANAGER ANALYTICS V2) ---
+   --- MELHORIA VISUAL E ESTRUTURAL ---
+   ================================================================= */
+
+/* Sobrescreve altura fixa de input-field para textareas da análise */
+textarea.input-field {
+    height: auto !important;
+    min-height: 100px; /* Mais altura para escrever */
+    padding: 12px;
+    line-height: 1.6;
+    resize: vertical;
+    background-color: rgba(0,0,0,0.2); /* Fundo sutilmente diferente para inputs */
+    font-size: 0.9rem;
+}
+
+textarea.input-field:focus {
+    background-color: var(--bg-panel); /* Acende ao focar */
+}
+
+/* Badges para o resultado da análise anterior */
+.result-badge {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    margin-top: 6px;
+    margin-right: 5px;
+}
+
+.result-success {
+    background-color: var(--good-bg);
+    color: var(--good);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.result-fail {
+    background-color: var(--bad-bg);
+    color: var(--bad);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.result-neutral {
+    background-color: rgba(63, 63, 70, 0.3);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+}
+
+/* Classes para colorir o valor principal no modal */
+.val-good { color: var(--good) !important; }
+.val-bad { color: var(--bad) !important; }
+.val-neutral { color: var(--accent) !important; }
+
+/* ESTILOS ESPECÍFICOS DO MODAL DE ANÁLISE 
+   Para deixá-lo menos confuso e mais hierárquico
+*/
+
+/* Container de "Resultado Anterior" com visual de cartão informativo */
+#previousReviewBlock {
+    background: linear-gradient(to right, var(--bg-elevated), var(--bg-panel));
+    border-left: 4px solid var(--text-muted); /* Borda lateral para destacar */
+    opacity: 0.9;
+}
+
+/* Título de seção dentro do modal */
+#analysisModal h4 {
+    border-bottom: 2px solid var(--border);
+    padding-bottom: 8px;
+    margin-bottom: 20px;
+    display: flex; 
+    align-items: center; 
+    gap: 8px;
+}
+
+/* Ajustes nos Labels do Modal de Análise para dar destaque */
+#analysisModal .form-group label {
+    color: var(--accent); /* Cor de destaque para saber o que preencher */
+    font-size: 0.75rem;
+    opacity: 0.9;
 }
