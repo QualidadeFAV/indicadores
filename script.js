@@ -1411,6 +1411,12 @@ function closeModal(id) { document.getElementById(id).classList.remove('open'); 
 function setSector(val) { currentSector = val; renderApp(); }
 function setYear(y) {
     currentYear = y;
+
+    // Atualiza visual do seletor
+    document.querySelectorAll('.year-btn').forEach(b => b.classList.remove('active'));
+    const btn = document.getElementById('btn-' + y);
+    if (btn) btn.classList.add('active');
+
     if (currentView === 'manager') renderManagerialView();
     else renderApp();
 }
