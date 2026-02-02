@@ -1,9 +1,9 @@
-/* * FAV ANALYTICS - CORE V119 FINAL (SILENT MODE)
- * Features: Minimal Notifications + Separate Tab + Auto Draft
+/* * FAV ANALYTICS - CORE V125 FINAL (FULL CODE)
+ * Features: Instant Grid + Fluid Data Animation + Single Row DB + Silent Auto Draft + Cloud Delete
  */
 
 const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
-const DRAFT_KEY = 'fav_analysis_draft'; 
+const DRAFT_KEY = 'fav_analysis_draft';
 
 // Inicializa ícones
 lucide.createIcons();
@@ -16,31 +16,31 @@ let currentSector = 'Todos';
 let currentView = 'table';
 let currentTheme = localStorage.getItem('fav_theme') || 'dark';
 let deadlineDay = parseInt(localStorage.getItem('fav_deadline')) || 15;
-let charts = {}; 
+let charts = {};
 let chartInstance = null;
 let currentMetricId = null;
 let isNewSectorMode = false;
-let statusChartMode = 'last'; 
+let statusChartMode = 'last';
 
 // Variável para armazenar as análises (Sincronizado com BD_ANALISES)
-let analysisDB = {}; 
+let analysisDB = {};
 let activeAnalysis = { id: null, idx: null };
 
 // --- INICIALIZAÇÃO ---
 window.onload = () => {
-    applyTheme(currentTheme, false); 
+    applyTheme(currentTheme, false);
     loadData();
     setupOutsideClick();
-    setupDraftAutoSave(); 
+    setupDraftAutoSave();
 };
 
 // --- RASCUNHO AUTOMÁTICO (LOCAL & SILENCIOSO) ---
 function setupDraftAutoSave() {
     const fields = ['ana-critical', 'ana-cause', 'ana-plan', 'ana-responsible', 'ana-next-meta'];
-    
+
     fields.forEach(fieldId => {
         const el = document.getElementById(fieldId);
-        if(el) {
+        if (el) {
             el.addEventListener('input', () => {
                 if (activeAnalysis.id !== null && activeAnalysis.idx !== null) {
                     const draftData = {
@@ -56,9 +56,9 @@ function setupDraftAutoSave() {
                         },
                         timestamp: Date.now()
                     };
-                    
+
                     const isEmpty = Object.values(draftData.data).every(val => val.trim() === '');
-                    
+
                     if (isEmpty) {
                         localStorage.removeItem(DRAFT_KEY);
                     } else {
@@ -74,14 +74,14 @@ function setupDraftAutoSave() {
 function setupOutsideClick() {
     document.querySelectorAll('.modal-overlay').forEach(overlay => {
         let isMouseDownInside = false;
-        
+
         overlay.addEventListener('mousedown', (e) => {
             isMouseDownInside = (e.target !== overlay);
         });
 
         overlay.addEventListener('click', (e) => {
             if (!isMouseDownInside && e.target === overlay) {
-                if(overlay.id === 'analysisModal' && currentView === 'table') {
+                if (overlay.id === 'analysisModal' && currentView === 'table') {
                     renderTable(fullDB[currentYear]);
                 }
                 closeModal(overlay.id);
@@ -96,10 +96,10 @@ async function loadData() {
     try {
         const res = await fetch(API_URL);
         const data = await res.json();
-        
+
         if (data["2025"]) fullDB["2025"] = data["2025"];
         if (data["2026"]) fullDB["2026"] = data["2026"];
-        
+
         if (data["analysis"]) {
             analysisDB = data["analysis"];
         } else {
@@ -117,7 +117,6 @@ async function loadData() {
 
 // --- SALVAMENTO GERAL (APENAS NÚMEROS) ---
 async function saveData() {
-    // SEM TOAST AQUI (Silencioso)
     const payload = {
         "2025": fullDB["2025"],
         "2026": fullDB["2026"]
@@ -147,7 +146,6 @@ async function saveAnalysisToCloud(id, year, monthIdx, dataObj) {
 
     try {
         await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
-        // SEM TOAST AQUI (Silencioso)
     } catch (e) {
         console.error(e);
         showToast("Erro ao gravar", "error");
@@ -167,7 +165,6 @@ async function deleteAnalysisFromCloud(id, year, monthIdx) {
 
     try {
         await fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) });
-        // SEM TOAST AQUI (Silencioso)
     } catch (e) {
         console.error(e);
         showToast("Erro ao excluir", "error");
@@ -181,7 +178,7 @@ function toggleTheme() {
     localStorage.setItem('fav_theme', currentTheme);
     applyTheme(currentTheme, true);
     if (currentView === 'exec') {
-        renderApp(); 
+        renderApp();
     }
 }
 
@@ -223,7 +220,7 @@ function renderApp(filter = currentSector) {
     } else {
         renderExecutiveCharts(filtered);
     }
-    
+
     document.getElementById('btn-2025').classList.toggle('active', currentYear === '2025');
     document.getElementById('btn-2026').classList.toggle('active', currentYear === '2026');
     lucide.createIcons();
@@ -234,22 +231,22 @@ function checkOnTime(dateStr, monthIdx) {
     const delivery = new Date(dateStr + "T12:00:00");
     const curYear = parseInt(currentYear);
     const minDate = new Date(curYear, monthIdx, 1, 0, 0, 0);
-    
+
     let limitYear = curYear;
-    let limitMonth = monthIdx + 1; 
+    let limitMonth = monthIdx + 1;
     if (limitMonth > 11) {
-        limitMonth = 0; 
+        limitMonth = 0;
         limitYear++;
     }
     const limitDate = new Date(limitYear, limitMonth, deadlineDay, 23, 59, 59);
-    
+
     return delivery >= minDate && delivery <= limitDate;
 }
 
 function getStatus(val, meta, logic, fmt) {
     if (val === null || val === "" || val === "NaN") return "empty";
     let v, m;
-    
+
     if (fmt === 'time') {
         v = timeToDec(val);
         m = timeToDec(meta);
@@ -259,9 +256,9 @@ function getStatus(val, meta, logic, fmt) {
         v = parseFloat(sVal);
         m = parseFloat(sMeta);
     }
-    
+
     if (isNaN(v) || isNaN(m)) return "empty";
-    
+
     if (logic === 'maior') {
         return v >= m ? 'good' : 'bad';
     } else {
@@ -271,14 +268,21 @@ function getStatus(val, meta, logic, fmt) {
 
 function formatVal(v, f) {
     if (v === null || v === undefined || v === "" || v === "NaN") return "-";
-    
+
     if (f === 'time') {
+        if (typeof v === 'number' && !isNaN(v)) {
+            let h = Math.floor(v);
+            let m = Math.round((v - h) * 60);
+            if (m === 60) { h++; m = 0; }
+            return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        }
+
         let str = String(v);
         const match = str.match(/(\d{1,2}):(\d{2})/);
         if (match) return `${match[1].padStart(2, '0')}:${match[2].padStart(2, '0')}`;
         return str;
     }
-    
+
     let num;
     if (typeof v === 'string') {
         const clean = v.replace(/[^\d.,\-]/g, '').replace(',', '.');
@@ -286,9 +290,9 @@ function formatVal(v, f) {
     } else {
         num = parseFloat(v);
     }
-    
+
     if (isNaN(num)) return "-";
-    
+
     const br = num.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
 
     switch (f) {
@@ -314,7 +318,7 @@ function timeToDec(t) {
     if (!t || typeof t !== 'string') return NaN;
     const match = t.match(/(\d{1,2}):(\d{2})/);
     if (match) return parseFloat(match[1]) + (parseFloat(match[2]) / 60);
-    return NaN; 
+    return NaN;
 }
 
 function updateKPIs(data) {
@@ -363,7 +367,7 @@ function renderTable(data) {
         emptyState.style.display = 'flex';
         return;
     }
-    
+
     tableEl.style.display = 'table';
     emptyState.style.display = 'none';
 
@@ -384,7 +388,7 @@ function renderTable(data) {
             tr.className = 'cascade-item';
             tr.style.animationDelay = `${delayCounter * 30}ms`;
             delayCounter++;
-            
+
             const logicLabel = item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓';
 
             let html = `
@@ -400,7 +404,7 @@ function renderTable(data) {
             for (let i = 0; i < 12; i++) {
                 const val = item.data[i];
                 const status = getStatus(val, item.meta, item.logic, item.format);
-                
+
                 let cls = 'cell-empty';
                 if (status === 'good') cls = 'cell-good';
                 else if (status === 'bad') cls = 'cell-bad';
@@ -423,11 +427,11 @@ function renderTable(data) {
 
 function renderExecutiveCharts(data) {
     if (currentView !== 'exec') return;
-    
+
     const cards = document.querySelectorAll('.chart-card');
     cards.forEach((card, i) => {
-        card.classList.remove('cascade-item'); 
-        void card.offsetWidth; 
+        card.classList.remove('cascade-item');
+        void card.offsetWidth;
         card.classList.add('cascade-item');
         card.style.animationDelay = `${i * 100}ms`;
     });
@@ -442,7 +446,7 @@ function getChartColors() {
     return {
         text: isDark ? '#a1a1aa' : '#52525b',
         grid: isDark ? '#27272a' : '#d4d4d8',
-        bg:   isDark ? '#18181b' : '#ffffff',
+        bg: isDark ? '#18181b' : '#ffffff',
         title: isDark ? '#ffffff' : '#18181b'
     };
 }
@@ -452,20 +456,38 @@ function renderTrendChart(data) {
     if (charts.trend) charts.trend.destroy();
 
     const colors = getChartColors();
-    const gradientTrend = ctxTrend.createLinearGradient(0, 300, 0, 0);
-    gradientTrend.addColorStop(0, '#1e3a8a');
-    gradientTrend.addColorStop(1, '#3b82f6');
 
+    // --- CÁLCULO DOS DADOS ---
     const mAvg = Array(12).fill(0);
     const mCount = Array(12).fill(0);
+    const mTieBreaker = Array(12).fill(0); // Placar de desempate (performance relativa)
 
     data.forEach(item => {
         item.data.forEach((val, i) => {
             if (val !== null && val !== "") {
                 const st = getStatus(val, item.meta, item.logic, item.format);
+
+                // Contabiliza % de atingimento
                 if (st !== 'empty') {
                     mAvg[i] += (st === 'good' ? 100 : 0);
                     mCount[i]++;
+                }
+
+                // --- LÓGICA DE DESEMPATE ---
+                // Calcula o "excesso" ou "falta" em relação à meta para desempate
+                let numVal = parseFloat(val);
+                let target = parseFloat(item.meta);
+
+                if (!isNaN(numVal) && !isNaN(target) && target !== 0) {
+                    let relativePerformance = 0;
+                    if (item.logic === 'maior') {
+                        // Quanto maior que a meta, melhor
+                        relativePerformance = (numVal - target) / target;
+                    } else {
+                        // Quanto menor que a meta, melhor (invertido)
+                        relativePerformance = (target - numVal) / target;
+                    }
+                    mTieBreaker[i] += relativePerformance;
                 }
             }
         });
@@ -473,6 +495,55 @@ function renderTrendChart(data) {
 
     const trendData = mAvg.map((s, i) => mCount[i] ? Math.round(s / mCount[i]) : 0);
 
+    // --- DETECÇÃO DO MELHOR MÊS (COM DESEMPATE) ---
+    let maxVal = -Infinity;
+    let candidates = [];
+
+    trendData.forEach((val, i) => {
+        if (val > maxVal) {
+            maxVal = val;
+            candidates = [i];
+        } else if (val === maxVal) {
+            candidates.push(i);
+        }
+    });
+
+    let bestIdx = -1;
+    if (maxVal > 0 && candidates.length > 0) {
+        if (candidates.length === 1) {
+            bestIdx = candidates[0];
+        } else {
+            // Empate: usa mTieBreaker para decidir quem performou "melhor"
+            let bestScore = -Infinity;
+            candidates.forEach(idx => {
+                if (mTieBreaker[idx] > bestScore) {
+                    bestScore = mTieBreaker[idx];
+                    bestIdx = idx;
+                }
+            });
+            // Se ainda assim empatar, pega o último (fallback)
+            if (bestIdx === -1) bestIdx = candidates[candidates.length - 1];
+        }
+    }
+
+    // --- GRADIENTES ---
+    // 1. Gradiente Padrão (Azul)
+    const gradientNormal = ctxTrend.createLinearGradient(0, 300, 0, 0);
+    gradientNormal.addColorStop(0, '#1e3a8a');
+    gradientNormal.addColorStop(1, '#3b82f6');
+
+    // 2. Gradiente Dourado (Escuro para Contraste)
+    // O usuário quer DOURADO, mas texto branco legível -> Base mais escura/bronze
+    const gradientGold = ctxTrend.createLinearGradient(0, 300, 0, 0);
+    gradientGold.addColorStop(0, '#B8860B');   // Dark Goldenrod (Base escura)
+    gradientGold.addColorStop(0.4, '#D4AF37'); // Metallic Gold (Meio Rico)
+    gradientGold.addColorStop(0.7, '#B8860B'); // Volta ao escuro
+    gradientGold.addColorStop(1, '#8B6508');   // Dark Goldenrod mais profundo (Topo Escuro)
+
+    // Define background color array
+    const bgColors = trendData.map((_, i) => i === bestIdx ? gradientGold : gradientNormal);
+
+    // Plugin 1: Labels de Dados
     const dataLabelPlugin = {
         id: 'customDataLabels',
         afterDatasetsDraw(chart) {
@@ -482,7 +553,7 @@ function renderTrendChart(data) {
                 meta.data.forEach((bar, index) => {
                     const value = dataset.data[index];
                     if (value > 0) {
-                        ctx.fillStyle = '#ffffff'; 
+                        ctx.fillStyle = '#ffffff';
                         ctx.font = 'bold 10px Inter, sans-serif';
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
@@ -493,6 +564,78 @@ function renderTrendChart(data) {
         }
     };
 
+    // Plugin 2: Melhor Mês (Badge + Sparkles)
+    const bestMonthPlugin = {
+        id: 'bestMonthPlugin',
+        afterDraw: (chart) => {
+            const ctx = chart.ctx;
+            const meta = chart.getDatasetMeta(0);
+            const container = chart.canvas.parentNode;
+
+            // Limpa elementos anteriores
+            const oldBadge = container.querySelector('.best-month-badge');
+            if (oldBadge) oldBadge.remove();
+
+            // Remove sparkles antigos
+            container.querySelectorAll('.sparkle').forEach(el => el.remove());
+
+            // Remove resquícios antigos
+            const oldShine = container.querySelector('.shine-effect');
+            if (oldShine) oldShine.remove();
+            const oldCrown = container.querySelector('.crown-icon');
+            if (oldCrown) oldCrown.remove();
+
+            if (bestIdx !== -1) {
+                const barProps = meta.data[bestIdx];
+                if (barProps) {
+                    // A. Badge "Melhor mês"
+                    const badge = document.createElement('div');
+                    badge.className = 'best-month-badge';
+                    badge.innerText = 'Melhor mês';
+
+                    // Ajuste de cor do badge
+                    badge.style.background = 'linear-gradient(135deg, #B8860B, #8B6508)';
+                    badge.style.border = '1px solid #D4AF37';
+
+                    // Posicionamento
+                    badge.style.left = barProps.x + 'px';
+                    badge.style.top = barProps.y + 'px';
+                    container.appendChild(badge);
+
+                    // B. Sparkles (Pontos de brilho)
+                    const w = barProps.width;
+                    const h = barProps.base - barProps.y;
+
+                    // Cria 3 brilhos em posições aleatórias/fixas dentro da barra
+                    const sparklePositions = [
+                        { top: 0.2, left: -0.2 }, // Topo esquerdo
+                        { top: 0.5, left: 0.3 },  // Meio direita
+                        { top: 0.8, left: -0.1 }  // Base esquerda
+                    ];
+
+                    sparklePositions.forEach((pos, idx) => {
+                        const sparkle = document.createElement('div');
+                        sparkle.className = 'sparkle';
+
+                        // Calcula posição
+                        // barProps.x é o centro. w é largura total.
+                        // left: x - w/2 + (w * offset)
+                        const posX = barProps.x + (w * pos.left);
+                        const posY = barProps.y + (h * pos.top);
+
+                        sparkle.style.left = posX + 'px';
+                        sparkle.style.top = posY + 'px';
+
+                        // Randomize delay para não piscarem juntos
+                        sparkle.style.animationDelay = (idx * 0.5) + 's';
+
+                        container.appendChild(sparkle);
+                    });
+                }
+            }
+        }
+    };
+
     charts.trend = new Chart(ctxTrend, {
         type: 'bar',
         data: {
@@ -500,7 +643,7 @@ function renderTrendChart(data) {
             datasets: [{
                 label: '% Performance',
                 data: trendData,
-                backgroundColor: gradientTrend,
+                backgroundColor: bgColors,
                 borderRadius: 4,
                 barPercentage: 0.6
             }]
@@ -510,14 +653,14 @@ function renderTrendChart(data) {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: function(context) { return context.parsed.y + '% de Aproveitamento'; } } }
+                tooltip: { callbacks: { label: function (context) { return context.parsed.y + '% de Aproveitamento'; } } }
             },
             scales: {
                 y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, stepSize: 25 } },
                 x: { grid: { display: false }, ticks: { color: colors.text, font: { size: 10 } } }
             }
         },
-        plugins: [dataLabelPlugin]
+        plugins: [dataLabelPlugin, bestMonthPlugin]
     });
 }
 
@@ -526,7 +669,7 @@ function renderStatusChart(data) {
     if (charts.status) charts.status.destroy();
 
     const colors = getChartColors();
-    let batido = 0, naoBatido = 0, naoContabilizado = 0; 
+    let batido = 0, naoBatido = 0, naoContabilizado = 0;
 
     data.forEach(item => {
         if (statusChartMode === 'year') {
@@ -540,10 +683,10 @@ function renderStatusChart(data) {
             if (!temDadosValidos(item)) {
                 naoContabilizado++;
             } else {
-                const valid = item.data.filter(v => 
+                const valid = item.data.filter(v =>
                     v !== null && v !== undefined && (typeof v !== 'string' || (v.trim() !== "" && v.trim() !== "NaN"))
                 );
-                
+
                 if (valid.length > 0) {
                     const status = getStatus(valid[valid.length - 1], item.meta, item.logic, item.format);
                     if (status === 'good') batido++;
@@ -558,29 +701,58 @@ function renderStatusChart(data) {
 
     const centerTextPlugin = {
         id: 'centerText',
-        beforeDraw: function(chart) {
+        beforeDraw: function (chart) {
             if (chart.config.type !== 'doughnut') return;
             const width = chart.width, height = chart.height, ctx = chart.ctx;
             ctx.restore();
-            
+
             const fontSize = (height / 140).toFixed(2);
             ctx.font = `bold ${fontSize}em Inter`;
             ctx.textBaseline = "middle";
-            ctx.fillStyle = colors.title; 
+            ctx.fillStyle = colors.title;
 
             const text = statusChartMode === 'year' ? "ANO" : "ATUAL";
             const textX = Math.round((width - ctx.measureText(text).width) / 2);
             const textY = height / 2;
 
             ctx.fillText(text, textX, textY);
-            
-            ctx.font = `normal ${fontSize*0.4}em Inter`;
+
+            ctx.font = `normal ${fontSize * 0.4}em Inter`;
             ctx.fillStyle = colors.text;
             const sub = "(Clique)";
             const subX = Math.round((width - ctx.measureText(sub).width) / 2);
             ctx.fillText(sub, subX, textY + 20);
-            
+
             ctx.save();
+        }
+    };
+
+    const sliceLabelPlugin = {
+        id: 'sliceLabel',
+        afterDraw: (chart) => {
+            const { ctx, data } = chart;
+            ctx.save();
+            ctx.font = 'bold 11px Inter';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = '#ffffff';
+
+            const meta = chart.getDatasetMeta(0);
+            const total = data.datasets[0].data.reduce((a, b) => a + b, 0);
+
+            meta.data.forEach((element, index) => {
+                if (!element.hidden && data.datasets[0].data[index] > 0) {
+                    const value = data.datasets[0].data[index];
+                    const percentage = Math.round((value / total) * 100) + '%';
+
+                    // Só desenha se tiver espaço suficiente (opcional, mas bom pra evitar clutter)
+                    if (value / total > 0.05) {
+                        const { x, y } = element.tooltipPosition();
+                        ctx.fillText(percentage, x, y);
+                    }
+                }
+            });
+            ctx.restore();
         }
     };
 
@@ -602,13 +774,13 @@ function renderStatusChart(data) {
             onClick: (e) => {
                 statusChartMode = statusChartMode === 'last' ? 'year' : 'last';
                 showToast(`Visão: ${statusChartMode === 'year' ? 'Acumulado do Ano' : 'Status Atual'}`, "wait");
-                renderStatusChart(data); 
+                renderStatusChart(data);
             },
             plugins: {
                 legend: { position: 'bottom', labels: { color: colors.text, font: { size: 11 }, usePointStyle: true, padding: 20 } },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
+                        label: function (context) {
                             let label = context.label || '';
                             let value = context.parsed;
                             let total = batido + naoBatido + naoContabilizado;
@@ -619,7 +791,7 @@ function renderStatusChart(data) {
                 }
             }
         },
-        plugins: [centerTextPlugin]
+        plugins: [centerTextPlugin, sliceLabelPlugin]
     });
 }
 
@@ -653,7 +825,7 @@ function renderPuncChart(data) {
                 borderColor: '#f59e0b',
                 backgroundColor: gradientPunc,
                 borderWidth: 2,
-                pointBackgroundColor: colors.bg, 
+                pointBackgroundColor: colors.bg,
                 pointBorderColor: '#f59e0b',
                 pointRadius: 4,
                 fill: true,
@@ -700,7 +872,7 @@ function openMainModal(id) {
 
         if (!nMeta || isNaN(nMeta) || isNaN(valNum) || nMeta === 0) {
             el.innerText = '-';
-            el.removeAttribute('data-tooltip'); 
+            el.removeAttribute('data-tooltip');
             return;
         }
 
@@ -718,11 +890,11 @@ function openMainModal(id) {
         }
 
         el.innerText = displayStr;
-        el.setAttribute('data-tooltip', descStr); 
+        el.setAttribute('data-tooltip', descStr);
     };
 
     const valid = item.data.filter(v => v !== null && v !== "");
-    
+
     if (valid.length > 0) {
         const last = valid[valid.length - 1];
         let hits = 0;
@@ -745,22 +917,21 @@ function openMainModal(id) {
             targetEl.innerText = "-";
             targetEl.removeAttribute('data-tooltip');
         }
-        
-        if (item.format === 'time') {
+
+        // Cálculo da Média (agora suporta Time também)
+        const values = valid.map(v => {
+            if (item.format === 'time') return timeToDec(v);
+            return parseFloat(String(v).replace(',', '.'));
+        }).filter(n => !isNaN(n));
+
+        if (values.length > 0) {
+            const sum = values.reduce((a, b) => a + b, 0);
+            const avg = sum / values.length;
+            setText('viewAvg', formatVal(avg, item.format));
+            setStatWithTooltip('viewAvgPct', avg, 'Média');
+        } else {
             setText('viewAvg', "-");
             setText('viewAvgPct', "-");
-        } else {
-            const values = valid.map(v => parseFloat(String(v).replace(',', '.'))).filter(n => !isNaN(n));
-            
-            if (values.length > 0) {
-                const sum = values.reduce((a, b) => a + b, 0);
-                const avg = sum / values.length;
-                setText('viewAvg', formatVal(avg, item.format));
-                setStatWithTooltip('viewAvgPct', avg, 'Média');
-            } else {
-                setText('viewAvg', "-");
-                setText('viewAvgPct', "-");
-            }
         }
     } else {
         setText('viewLast', "-");
@@ -780,12 +951,12 @@ function openMainModal(id) {
     });
     const pScore = pTotal ? Math.round((pCount / pTotal) * 100) : 0;
     setText('viewPunc', pTotal ? pScore + "%" : "-");
-    
+
     const badgeEl = document.getElementById('puncBadge');
     if (badgeEl) {
-        if(pTotal === 0) badgeEl.innerHTML = '<span class="badge badge-warn">Sem dados</span>';
-        else if(pScore === 100) badgeEl.innerHTML = '<span class="badge badge-good">Excelente</span>';
-        else if(pScore >= 70) badgeEl.innerHTML = '<span class="badge badge-warn">Regular</span>';
+        if (pTotal === 0) badgeEl.innerHTML = '<span class="badge badge-warn">Sem dados</span>';
+        else if (pScore === 100) badgeEl.innerHTML = '<span class="badge badge-good">Excelente</span>';
+        else if (pScore >= 70) badgeEl.innerHTML = '<span class="badge badge-warn">Regular</span>';
         else badgeEl.innerHTML = '<span class="badge badge-bad">Crítico</span>';
     }
 
@@ -794,36 +965,40 @@ function openMainModal(id) {
 
     switchToViewMode();
     document.getElementById('mainModal').classList.add('open');
-    
-    // FIX: Delay reduzido para 250ms
-    setTimeout(() => renderDetailChart(item), 450); 
+
+    // --- LÓGICA DE RENDERIZAÇÃO INSTANTÂNEA ---
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            renderDetailChart(item);
+        });
+    });
 }
 
 function renderTimeline(item) {
     const c = document.getElementById('timelineTrack');
     let h = '';
-    
+
     for (let i = 0; i < 12; i++) {
         const hasData = item.data[i] !== null && item.data[i] !== "";
-        
+
         if (hasData) {
             const dateStr = item.dates[i];
-            let cls = 'tl-dot'; 
+            let cls = 'tl-dot';
             let tip = 'Entregue';
 
             if (dateStr) {
-                if (checkOnTime(dateStr, i)) { cls += ' ok';  tip = 'No Prazo'; } 
+                if (checkOnTime(dateStr, i)) { cls += ' ok'; tip = 'No Prazo'; }
                 else { cls += ' late'; tip = 'Atrasado'; }
             } else {
-                cls += ' empty'; tip = 'Sem data'; 
+                cls += ' empty'; tip = 'Sem data';
             }
-            
+
             h += `<div class="timeline-item" title="${months[i]}: ${tip}">
                 <div class="${cls}"></div><div class="tl-label">${months[i]}</div>
             </div>`;
         }
     }
-    
+
     c.innerHTML = h || '<div style="color:#666;font-size:0.8rem;text-align:center;width:100%;padding:10px">Sem dados lançados.</div>';
 }
 
@@ -833,7 +1008,7 @@ function populateEditForm(item) {
     document.getElementById('inp-meta').value = item.meta;
     document.getElementById('inp-logic').value = item.logic;
     document.getElementById('inp-format').value = item.format;
-    
+
     const secSel = document.getElementById('inp-sector');
     const secs = [...new Set(fullDB[currentYear].map(i => i.sector))];
     secSel.innerHTML = secs.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -858,7 +1033,7 @@ function saveItem() {
     const id = document.getElementById('inp-id').value;
     const name = document.getElementById('inp-name').value;
     const sector = isNewSectorMode ? document.getElementById('inp-new-sector').value : document.getElementById('inp-sector').value;
-    
+
     if (!name || !sector) return alert("Preencha Nome e Setor.");
 
     const newData = [];
@@ -885,7 +1060,7 @@ function saveItem() {
     } else {
         fullDB[currentYear].push(newItem);
         if (currentYear === '2025') {
-            const clone = {...newItem, id: Date.now()+1, data: Array(12).fill(null), dates: Array(12).fill(null)};
+            const clone = { ...newItem, id: Date.now() + 1, data: Array(12).fill(null), dates: Array(12).fill(null) };
             fullDB['2026'].push(clone);
         }
         closeModal('mainModal');
@@ -900,7 +1075,7 @@ function openCreateModal() {
     document.getElementById('inp-id').value = "";
     document.getElementById('inp-name').value = "";
     document.getElementById('inp-meta').value = "";
-    
+
     const c = document.getElementById('monthsGrid');
     c.innerHTML = '';
     months.forEach((m, i) => {
@@ -912,7 +1087,7 @@ function openCreateModal() {
             </div>
         `;
     });
-    
+
     const secSel = document.getElementById('inp-sector');
     const secs = [...new Set(fullDB[currentYear].map(i => i.sector))];
     secSel.innerHTML = secs.map(s => `<option value="${s}">${s}</option>`).join('');
@@ -925,7 +1100,7 @@ function openPdfModal() { document.getElementById('pdfModal').classList.add('ope
 
 function generateExport(type) {
     closeModal('pdfModal');
-    
+
     if (type === 'table-pdf') {
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF('l', 'mm', 'a4');
@@ -935,26 +1110,26 @@ function generateExport(type) {
         doc.text(`Setor: ${currentSector}`, 14, 28);
 
         const rows = [];
-        const pdfRowMap = {}; 
+        const pdfRowMap = {};
         let currentRowIndex = 0;
 
         const sectors = currentSector === 'Todos' ? [...new Set(fullDB[currentYear].map(i => i.sector))].sort() : [currentSector];
 
         sectors.forEach(sec => {
-            rows.push([{ 
-                content: sec, colSpan: 14, 
-                styles: { fillColor: [228, 228, 231], textColor: [24, 24, 27], fontStyle: 'bold', halign: 'left' } 
+            rows.push([{
+                content: sec, colSpan: 14,
+                styles: { fillColor: [228, 228, 231], textColor: [24, 24, 27], fontStyle: 'bold', halign: 'left' }
             }]);
-            pdfRowMap[currentRowIndex] = null; 
+            pdfRowMap[currentRowIndex] = null;
             currentRowIndex++;
 
             const items = fullDB[currentYear].filter(i => i.sector === sec);
             items.forEach(item => {
                 rows.push([
-                    item.name, formatVal(item.meta, item.format), 
+                    item.name, formatVal(item.meta, item.format),
                     ...item.data.map(v => formatVal(v, item.format))
                 ]);
-                pdfRowMap[currentRowIndex] = item; 
+                pdfRowMap[currentRowIndex] = item;
                 currentRowIndex++;
             });
         });
@@ -965,7 +1140,7 @@ function generateExport(type) {
             startY: 35,
             styles: { fontSize: 7, cellPadding: 2, lineColor: 200, lineWidth: 0.1, halign: 'center', valign: 'middle' },
             headStyles: { fillColor: [59, 130, 246], halign: 'center' },
-            didParseCell: function(dataCell) {
+            didParseCell: function (dataCell) {
                 if (dataCell.section === 'body' && dataCell.column.index >= 2) {
                     const rowIndex = dataCell.row.index;
                     const item = pdfRowMap[rowIndex];
@@ -979,7 +1154,7 @@ function generateExport(type) {
                             dataCell.cell.styles.fillColor = [16, 185, 129];
                             dataCell.cell.styles.textColor = [255, 255, 255];
                         } else if (status === 'bad') {
-                            dataCell.cell.styles.fillColor = [239, 68, 68]; 
+                            dataCell.cell.styles.fillColor = [239, 68, 68];
                             dataCell.cell.styles.textColor = [255, 255, 255];
                         }
                     }
@@ -987,7 +1162,7 @@ function generateExport(type) {
             }
         });
         doc.save(`Relatorio_${currentYear}.pdf`);
-    
+
     } else if (type === 'excel') {
         const data = currentSector === 'Todos' ? fullDB[currentYear] : fullDB[currentYear].filter(i => i.sector === currentSector);
         const wsData = data.map(item => {
@@ -1002,17 +1177,17 @@ function generateExport(type) {
 
     } else if (type === 'visual-pdf') {
         showToast("Gerando PDF...", "wait");
-        
+
         const wasTable = currentView === 'table';
         if (wasTable) switchView('exec');
-        
+
         setTimeout(() => {
             const element = document.getElementById('charts-area');
             const options = {
-                scale: 2, useCORS: true, 
+                scale: 2, useCORS: true,
                 backgroundColor: currentTheme === 'light' ? '#ffffff' : '#09090b',
                 logging: false,
-                onclone: function(clonedDoc) {
+                onclone: function (clonedDoc) {
                     const clonedChartsArea = clonedDoc.getElementById('charts-area');
                     if (clonedChartsArea) {
                         const bg = currentTheme === 'light' ? '#ffffff' : '#09090b';
@@ -1037,16 +1212,16 @@ function generateExport(type) {
                     }
                 }
             };
-            
+
             html2canvas(element, options).then(canvas => {
                 const imgData = canvas.toDataURL('image/png', 1.0);
                 const { jsPDF } = window.jspdf;
                 const doc = new jsPDF('l', 'mm', 'a4');
                 const pageWidth = doc.internal.pageSize.getWidth();
                 const pageHeight = doc.internal.pageSize.getHeight();
-                const imgWidth = pageWidth - 20; 
+                const imgWidth = pageWidth - 20;
                 const imgHeight = (canvas.height * imgWidth) / canvas.width;
-                
+
                 if (currentTheme === 'dark') {
                     doc.setFillColor(9, 9, 11);
                     doc.rect(0, 0, pageWidth, pageHeight, 'F');
@@ -1059,15 +1234,15 @@ function generateExport(type) {
 
                 doc.setFontSize(16);
                 doc.text(`Dashboard FAV Analytics - ${currentYear}`, pageWidth / 2, 15, { align: 'center' });
-                
+
                 doc.setFontSize(10);
                 doc.setTextColor(150, 150, 150);
-                doc.text(`Setor: ${currentSector} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, 
-                        pageWidth / 2, 22, { align: 'center' });
-                
+                doc.text(`Setor: ${currentSector} | Gerado em: ${new Date().toLocaleDateString('pt-BR')}`,
+                    pageWidth / 2, 22, { align: 'center' });
+
                 const xPos = (pageWidth - imgWidth) / 2;
-                const yPos = 30; 
-                
+                const yPos = 30;
+
                 if (yPos + imgHeight > pageHeight) {
                     const adjustedHeight = pageHeight - yPos - 10;
                     const adjustedWidth = (canvas.width * adjustedHeight) / canvas.height;
@@ -1076,13 +1251,13 @@ function generateExport(type) {
                 } else {
                     doc.addImage(imgData, 'PNG', xPos, yPos, imgWidth, imgHeight);
                 }
-                
+
                 doc.setFontSize(8);
                 doc.setTextColor(100, 100, 100);
                 doc.text('Página 1/1', pageWidth - 10, pageHeight - 10, { align: 'right' });
-                
+
                 doc.save(`Dashboard_FAV_${currentYear}_${currentSector}.pdf`);
-                
+
                 if (wasTable) {
                     setTimeout(() => switchView('table'), 500);
                 }
@@ -1099,49 +1274,58 @@ function generateExport(type) {
 function renderDetailChart(item) {
     const ctx = document.getElementById('detailChart').getContext('2d');
     if (chartInstance) chartInstance.destroy();
-    
+
     const colors = getChartColors();
     const cData = item.data.map(v => {
-        if(v===null||v==="") return null;
-        let n = item.format==='time'?timeToDec(v):parseFloat(v.replace(',','.'));
-        return isNaN(n) ? null : n; 
+        if (v === null || v === "") return null;
+        let n = item.format === 'time' ? timeToDec(v) : parseFloat(v.replace(',', '.'));
+        return isNaN(n) ? null : n;
     });
-    
-    const cMeta = item.format==='time' ? timeToDec(item.meta) : parseFloat(item.meta.replace(',','.'));
-    
-    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
-    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)'); 
-    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)'); 
 
-    chartInstance = new Chart(ctx, { 
-        type: 'line', 
-        data: { 
-            labels: months, 
-            datasets: [{ 
-                label: 'Real', 
-                data: cData, 
-                borderColor: '#3b82f6', 
+    const cMeta = item.format === 'time' ? timeToDec(item.meta) : parseFloat(item.meta.replace(',', '.'));
+
+    const gradient = ctx.createLinearGradient(0, 0, 0, 300);
+    gradient.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+    gradient.addColorStop(1, 'rgba(59, 130, 246, 0.0)');
+
+    chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: months,
+            datasets: [{
+                label: 'Real',
+                data: cData,
+                borderColor: '#3b82f6',
                 backgroundColor: gradient,
                 borderWidth: 3,
-                tension: 0.3, 
-                fill: true,   
+                tension: 0.3,
+                fill: true,
                 pointRadius: 4,
-                pointBackgroundColor: colors.bg, 
+                pointBackgroundColor: colors.bg,
+                animations: {
+                    y: {
+                        duration: 1200,
+                        easing: 'easeOutQuart',
+                        from: (ctx) => {
+                            return ctx.chart.height;
+                        }
+                    }
+                },
                 pointBorderColor: '#3b82f6'
-            }, { 
-                label: 'Meta', 
-                data: Array(12).fill(cMeta), 
-                borderColor: '#ef4444', 
-                borderDash: [5,5], 
+            }, {
+                label: 'Meta',
+                data: Array(12).fill(cMeta),
+                borderColor: '#ef4444',
+                borderDash: [5, 5],
                 pointRadius: 0,
                 borderWidth: 2
-            }] 
-        }, 
-        options: { 
-            responsive: true, 
-            maintainAspectRatio: false, 
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
             layout: {
-                padding: { left: 0, right: 0, top: 10, bottom: 0 } 
+                padding: { left: 0, right: 0, top: 10, bottom: 0 }
             },
             plugins: { legend: { display: false } },
             // Permite clicar no mês do gráfico para abrir a análise
@@ -1152,16 +1336,18 @@ function renderDetailChart(item) {
                 }
             },
             scales: {
-                x: { 
+                x: {
                     grid: { display: false },
                     ticks: { color: colors.text, font: { size: 10 } }
                 },
                 y: {
                     grid: { color: colors.grid },
-                    ticks: { color: colors.text }
+                    ticks: { color: colors.text },
+                    beginAtZero: true
                 }
-            }
-        } 
+            },
+            // --- ANIMAÇÃO GLOBAL REMOVIDA (MOVIDO PARA DATASET) ---
+        }
     });
 }
 
@@ -1183,40 +1369,50 @@ function temDadosValidos(item) {
 }
 
 // Helpers diversos
-function populateSectorFilter() { const d = fullDB[currentYear]||[]; const s = ['Todos', ...new Set(d.map(i => i.sector))].sort(); const el = document.getElementById('sector-filter'); el.innerHTML = s.map(x => `<option value="${x}">${x}</option>`).join(''); el.value = currentSector; }
+function populateSectorFilter() {
+    const d = fullDB[currentYear] || [];
+    // Ordena os setores alfabeticamente
+    const uniqueSectors = [...new Set(d.map(i => i.sector))].sort();
+    // Adiciona "Todos" manualmente no topo
+    const finalList = ['Todos', ...uniqueSectors];
+
+    const el = document.getElementById('sector-filter');
+    el.innerHTML = finalList.map(x => `<option value="${x}">${x}</option>`).join('');
+    el.value = currentSector;
+}
 
 // --- TOGGLE SETOR IMÓVEL (SWAP) ---
-function toggleNewSector() { 
-    isNewSectorMode = !isNewSectorMode; 
+function toggleNewSector() {
+    isNewSectorMode = !isNewSectorMode;
     const selectEl = document.getElementById('inp-sector');
     const inputEl = document.getElementById('inp-new-sector');
-    const btnEl = document.getElementById('btn-toggle-sector'); 
+    const btnEl = document.getElementById('btn-toggle-sector');
 
-    if(isNewSectorMode) {
+    if (isNewSectorMode) {
         selectEl.style.display = 'none';
         inputEl.style.display = 'block';
-        if(btnEl) btnEl.innerText = "(Voltar)";
+        if (btnEl) btnEl.innerText = "(Voltar)";
         inputEl.focus();
     } else {
         selectEl.style.display = 'block';
         inputEl.style.display = 'none';
-        if(btnEl) btnEl.innerText = "(Novo?)";
-        inputEl.value = ""; 
+        if (btnEl) btnEl.innerText = "(Novo?)";
+        inputEl.value = "";
     }
 }
 
-function switchToEditMode() { document.getElementById('mode-view').style.display='none'; document.getElementById('footer-view').style.display='none'; document.getElementById('mode-edit').style.display='block'; document.getElementById('footer-edit').style.display='flex'; if(currentMetricId) setText('modalTitle', 'Editar Indicador'); }
-function switchToViewMode() { document.getElementById('mode-view').style.display='block'; document.getElementById('footer-view').style.display='flex'; document.getElementById('mode-edit').style.display='none'; document.getElementById('footer-edit').style.display='none'; if(currentMetricId) setText('modalTitle', fullDB[currentYear].find(i=>i.id==currentMetricId).name); }
+function switchToEditMode() { document.getElementById('mode-view').style.display = 'none'; document.getElementById('footer-view').style.display = 'none'; document.getElementById('mode-edit').style.display = 'block'; document.getElementById('footer-edit').style.display = 'flex'; if (currentMetricId) setText('modalTitle', 'Editar Indicador'); }
+function switchToViewMode() { document.getElementById('mode-view').style.display = 'block'; document.getElementById('footer-view').style.display = 'flex'; document.getElementById('mode-edit').style.display = 'none'; document.getElementById('footer-edit').style.display = 'none'; if (currentMetricId) setText('modalTitle', fullDB[currentYear].find(i => i.id == currentMetricId).name); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function setSector(val) { currentSector = val; renderApp(); }
 function setYear(y) { currentYear = y; renderApp(); }
-function switchView(v) { currentView = v; document.getElementById('view-table').style.display = v==='table'?'block':'none'; document.getElementById('view-exec').style.display = v==='exec'?'block':'none'; document.getElementById('btn-view-table').classList.toggle('active', v==='table'); document.getElementById('btn-view-exec').classList.toggle('active', v==='exec'); renderApp(); }
-function toggleLoading(s) { document.getElementById('loading-overlay').style.display=s?'flex':'none'; }
-function showToast(m, t) { const el=document.getElementById('toast'); el.innerText=m; el.className=`toast ${t}`; el.classList.add('show'); setTimeout(()=>el.classList.remove('show'),3000); }
-function setText(id, txt) { const el = document.getElementById(id); if(el) el.innerText = txt; }
-function configDeadline() { const n = prompt("Novo dia limite (Ex: 15):", deadlineDay); if(n && !isNaN(n)) { deadlineDay = parseInt(n); localStorage.setItem('fav_deadline', deadlineDay); renderApp(); } }
-function importFrom2025() { if(confirm("Deseja importar?")) { fullDB['2026'] = fullDB['2025'].map(i => ({...i, id: Date.now()+Math.random(), data: Array(12).fill(null), dates: Array(12).fill(null)})); saveData(); renderApp(); } }
-function deleteItem() { if(confirm("Excluir?")) { fullDB[currentYear] = fullDB[currentYear].filter(i=>i.id!=currentMetricId); saveData(); closeModal('mainModal'); renderApp(); } }
+function switchView(v) { currentView = v; document.getElementById('view-table').style.display = v === 'table' ? 'block' : 'none'; document.getElementById('view-exec').style.display = v === 'exec' ? 'block' : 'none'; document.getElementById('btn-view-table').classList.toggle('active', v === 'table'); document.getElementById('btn-view-exec').classList.toggle('active', v === 'exec'); renderApp(); }
+function toggleLoading(s) { document.getElementById('loading-overlay').style.display = s ? 'flex' : 'none'; }
+function showToast(m, t) { const el = document.getElementById('toast'); el.innerText = m; el.className = `toast ${t}`; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3000); }
+function setText(id, txt) { const el = document.getElementById(id); if (el) el.innerText = txt; }
+function configDeadline() { const n = prompt("Novo dia limite (Ex: 15):", deadlineDay); if (n && !isNaN(n)) { deadlineDay = parseInt(n); localStorage.setItem('fav_deadline', deadlineDay); renderApp(); } }
+function importFrom2025() { if (confirm("Deseja importar?")) { fullDB['2026'] = fullDB['2025'].map(i => ({ ...i, id: Date.now() + Math.random(), data: Array(12).fill(null), dates: Array(12).fill(null), analysis: {} })); saveData(); renderApp(); } }
+function deleteItem() { if (confirm("Excluir?")) { fullDB[currentYear] = fullDB[currentYear].filter(i => i.id != currentMetricId); saveData(); closeModal('mainModal'); renderApp(); } }
 
 
 /* =================================================================
@@ -1268,50 +1464,127 @@ function openAnalysisModal(id, idx) {
     // Dados básicos
     setText('analysisName', item.name);
     setText('analysisPeriodLabel', `${months[targetIdx]}/${currentYear}`);
-    
-    // Valor e Badge de Desvio (Lógica mantida V109)
-    const val = item.data[targetIdx];
-    setText('analysisValue', formatVal(val, item.format));
-    const currentStatus = getStatus(val, item.meta, item.logic, item.format);
-    const valEl = document.getElementById('analysisValue');
-    valEl.className = 'val-neutral'; valEl.style.fontSize = '1.4rem'; valEl.style.fontWeight = '700';
-    if (currentStatus === 'good') valEl.classList.add('val-good'); else if (currentStatus === 'bad') valEl.classList.add('val-bad');
 
-    let devBadge = document.getElementById('analysisDeviationBadge');
-    if (!devBadge) { devBadge = document.createElement('span'); devBadge.id = 'analysisDeviationBadge'; devBadge.style.fontSize = '0.75rem'; devBadge.style.marginLeft = '10px'; devBadge.style.padding = '2px 8px'; devBadge.style.borderRadius = '4px'; devBadge.style.fontWeight = '600'; valEl.parentNode.appendChild(devBadge); }
+    // --- NOVA EXIBIÇÃO CLARA (V2) ---
+    const val = item.data[targetIdx];
+    const meta = item.meta;
+
+    // 1. Meta
+    setText('analysisMeta', formatVal(meta, item.format));
+
+    // 2. Realizado
+    setText('analysisReal', formatVal(val, item.format));
+    const valEl = document.getElementById('analysisReal');
+
+    // Cor do Realizado baseada no status
+    const currentStatus = getStatus(val, item.meta, item.logic, item.format);
+    valEl.className = ''; // Reset
+    if (currentStatus === 'good') valEl.style.color = 'var(--good)';
+    else if (currentStatus === 'bad') valEl.style.color = 'var(--bad)';
+    else valEl.style.color = 'var(--text-main)';
+
+    // 3. Lógica (Objetivo)
+    const logicEl = document.getElementById('analysisLogic');
+    let logicText = "";
+    let logicIconType = "";
+
+    if (item.logic === 'maior') {
+        logicText = "Maior é Melhor";
+        logicIconType = "arrow-up";
+    } else {
+        logicText = "Menor é Melhor";
+        logicIconType = "arrow-down";
+    }
+
+    // Estilo "Blue Shape" (Pílula Azul com Seta)
+    // Usamos cores hardcoded aqui para garantir o visual "azul com setinha" que o usuário pediu,
+    // ou podemos usar classes CSS se existirem. Vamos fazer inline estilizado para garantir.
+    logicEl.innerHTML = `
+        <div style="
+            display: inline-flex; 
+            align-items: center; 
+            gap: 6px; 
+            background: rgba(59, 130, 246, 0.15); 
+            color: #3b82f6; 
+            padding: 4px 10px; 
+            border-radius: 6px; 
+            font-size: 0.8rem; 
+            font-weight: 600;
+            border: 1px solid rgba(59, 130, 246, 0.2);
+        ">
+            <i data-lucide="${logicIconType}" style="width: 14px; height: 14px;"></i>
+            ${logicText}
+        </div>
+    `;
+
+    // Reinicializa os ícones Lucide dentro do modal
+    lucide.createIcons({
+        root: logicEl,
+        nameAttr: 'data-lucide',
+        attrs: {
+            class: "lucide-icon"
+        }
+    });
+
+    // 4. Badge de Desvio (Reimplementado para o novo local)
+    // Limpa badge anterior se houver
+    const oldBadgeContainer = document.getElementById('analysisDeviationBadge');
+    if (oldBadgeContainer) oldBadgeContainer.innerHTML = '';
+
     const valNum = item.format === 'time' ? timeToDec(val) : parseFloat(String(val).replace(',', '.'));
     const metaNum = item.format === 'time' ? timeToDec(item.meta) : parseFloat(String(item.meta).replace(',', '.'));
-    if (!isNaN(valNum) && !isNaN(metaNum) && metaNum !== 0) {
-        const diff = valNum - metaNum; const pctDev = (diff / metaNum) * 100; const signal = pctDev > 0 ? '+' : '';
-        devBadge.innerText = `${signal}${pctDev.toFixed(1)}% da Meta`;
+
+    if (!isNaN(valNum) && !isNaN(metaNum) && metaNum !== 0 && val !== null && val !== "") {
+        const diff = valNum - metaNum;
+        const pctDev = (diff / metaNum) * 100;
+        const signal = pctDev > 0 ? '+' : '';
+
+        let badgeColor = 'var(--text-muted)';
+        let badgeBg = 'var(--bg-panel)';
+
+        // Se maior é melhor: diff > 0 é bom (verde), diff < 0 é ruim (vermelho)
+        // Se menor é melhor: diff < 0 é bom (verde), diff > 0 é ruim (vermelho)
         const isGood = item.logic === 'maior' ? diff >= 0 : diff <= 0;
-        devBadge.style.backgroundColor = isGood ? 'var(--good-bg)' : 'var(--bad-bg)'; devBadge.style.color = isGood ? 'var(--good)' : 'var(--bad)'; devBadge.style.display = 'inline-block';
-    } else { devBadge.style.display = 'none'; }
+
+        badgeColor = isGood ? 'var(--good)' : 'var(--bad)';
+        badgeBg = isGood ? 'var(--good-bg)' : 'var(--bad-bg)';
+
+        if (oldBadgeContainer) {
+            oldBadgeContainer.innerText = `${signal}${pctDev.toFixed(1)}% vs Meta`;
+            oldBadgeContainer.style.backgroundColor = badgeBg;
+            oldBadgeContainer.style.color = badgeColor;
+            oldBadgeContainer.style.padding = '2px 6px';
+            oldBadgeContainer.style.borderRadius = '4px';
+            oldBadgeContainer.style.display = 'inline-block';
+        }
+    } else {
+        if (oldBadgeContainer) oldBadgeContainer.style.display = 'none';
+    }
 
     // Bloco de Revisão (Lógica mantida V109)
     const prevBlock = document.getElementById('previousReviewBlock');
     const prevPlanText = document.getElementById('prevPlanText');
     const prevMetaValue = document.getElementById('prevMetaValue');
     const prevBadge = document.getElementById('prevResultBadge');
-    
+
     let prevIdx = targetIdx - 1;
     if (prevIdx >= 0) {
         // Busca análise no objeto carregado da nuvem (via getAnalysis)
         const prevAnalysis = getAnalysis(targetId, currentYear, prevIdx);
-        
+
         if (prevAnalysis && prevAnalysis.planoAcao) {
             prevBlock.style.display = 'block';
             prevPlanText.innerText = `"${prevAnalysis.planoAcao}"`;
             prevMetaValue.innerText = prevAnalysis.metaProximoMes ? formatVal(prevAnalysis.metaProximoMes, item.format) : "N/D";
-            
+
             // --- CÁLCULOS AVANÇADOS (Crescimento Real) ---
             let htmlBadges = "";
             let currentValNum = item.format === 'time' ? timeToDec(val) : parseFloat(String(val).replace(',', '.'));
-            
+
             // 1. Verificação da Meta Estipulada (Melhora Esperada)
             if (val !== null && val !== "" && prevAnalysis.metaProximoMes) {
                 const targetValNum = item.format === 'time' ? timeToDec(prevAnalysis.metaProximoMes) : parseFloat(String(prevAnalysis.metaProximoMes).replace(',', '.'));
-                
+
                 let success = false;
                 if (!isNaN(currentValNum) && !isNaN(targetValNum)) {
                     if (item.logic === 'maior') success = currentValNum >= targetValNum;
@@ -1326,29 +1599,29 @@ function openAnalysisModal(id, idx) {
             const prevValRaw = item.data[prevIdx];
             if (val !== null && val !== "" && prevValRaw !== null && prevValRaw !== "") {
                 const prevValNum = item.format === 'time' ? timeToDec(prevValRaw) : parseFloat(String(prevValRaw).replace(',', '.'));
-                
+
                 if (!isNaN(currentValNum) && !isNaN(prevValNum) && prevValNum !== 0) {
                     const diff = currentValNum - prevValNum;
                     const pctDiff = (diff / prevValNum) * 100;
-                    
+
                     let growthLabel = "";
                     let growthClass = "result-neutral";
                     const formattedDiff = pctDiff.toFixed(1) + "%";
-                    const symbol = diff > 0 ? "+" : ""; 
+                    const symbol = diff > 0 ? "+" : "";
 
                     if (item.logic === 'maior') {
                         if (diff > 0) { growthLabel = `Cresceu ${symbol}${formattedDiff}`; growthClass = "result-success"; }
                         else if (diff < 0) { growthLabel = `Caiu ${formattedDiff}`; growthClass = "result-fail"; }
                         else { growthLabel = "Estável"; }
-                    } else { 
-                        if (diff < 0) { growthLabel = `Melhorou ${formattedDiff}`; growthClass = "result-success"; } 
+                    } else {
+                        if (diff < 0) { growthLabel = `Melhorou ${formattedDiff}`; growthClass = "result-success"; }
                         else if (diff > 0) { growthLabel = `Piorou ${symbol}${formattedDiff}`; growthClass = "result-fail"; }
                         else { growthLabel = "Estável"; }
                     }
                     htmlBadges += `<span class="result-badge ${growthClass}">${growthLabel} vs Mês Anterior</span>`;
                 }
             }
-            if(htmlBadges === "") htmlBadges = '<span style="color:var(--text-muted); font-size:0.7rem">Dados insuficientes para cálculo.</span>';
+            if (htmlBadges === "") htmlBadges = '<span style="color:var(--text-muted); font-size:0.7rem">Dados insuficientes para cálculo.</span>';
             prevBadge.innerHTML = htmlBadges;
 
         } else {
@@ -1389,11 +1662,13 @@ function clearAnalysisForm() {
     document.getElementById('ana-responsible').value = '';
     document.getElementById('ana-next-meta').value = '';
     document.getElementById('ana-critical').focus();
-    
+
     // Remove rascunho ao limpar
     localStorage.removeItem(DRAFT_KEY);
-    
+
     // IMPORTANTE: NÃO CHAMAMOS renderTable() AQUI PARA EVITAR A PISCADA
+
+    showToast("Campos limpos. Clique em Salvar para remover da nuvem.", "wait");
 }
 
 function saveAnalysis() {
@@ -1434,22 +1709,22 @@ function saveAnalysis() {
         // Se tem dados, salva no objeto local
         analysisDB[id][currentYear][idx] = dataObj;
         showToast("Análise Salva!");
-        
+
         // E dispara o salvamento na nuvem (linha específica na aba BD_ANALISES)
         saveAnalysisToCloud(id, currentYear, idx, dataObj);
     }
 
     // Limpa o rascunho pois foi "comitado"
     localStorage.removeItem(DRAFT_KEY);
-    
+
     // Não usamos mais localStorage para persistência final, pois usamos a nuvem
     // Mas se quiser manter um cache local, pode descomentar:
     // localStorage.setItem('fav_analysis', JSON.stringify(analysisDB)); 
-    
+
     closeModal('analysisModal');
-    
+
     // Re-renderiza a tabela para atualizar a "bolinha"
-    if(currentView === 'table') renderTable(fullDB[currentYear]);
+    if (currentView === 'table') renderTable(fullDB[currentYear]);
 }
 
 // --- FUNÇÃO DE PONTE PARA SALVAR NO BACKEND (DB_ANALISES) ---
