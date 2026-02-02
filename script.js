@@ -1563,6 +1563,7 @@ function openAnalysisModal(id, idx) {
 
     // Bloco de Revisão (Lógica mantida V109)
     const prevBlock = document.getElementById('previousReviewBlock');
+    const prevCauseText = document.getElementById('prevCauseText'); // Novo
     const prevPlanText = document.getElementById('prevPlanText');
     const prevMetaValue = document.getElementById('prevMetaValue');
     const prevBadge = document.getElementById('prevResultBadge');
@@ -1572,9 +1573,20 @@ function openAnalysisModal(id, idx) {
         // Busca análise no objeto carregado da nuvem (via getAnalysis)
         const prevAnalysis = getAnalysis(targetId, currentYear, prevIdx);
 
-        if (prevAnalysis && prevAnalysis.planoAcao) {
+        if (prevAnalysis && (prevAnalysis.planoAcao || prevAnalysis.causa)) {
             prevBlock.style.display = 'block';
-            prevPlanText.innerText = `"${prevAnalysis.planoAcao}"`;
+
+            // Popula Causa
+            if (prevAnalysis.causa) {
+                prevCauseText.innerText = `"${prevAnalysis.causa}"`;
+                prevCauseText.style.display = 'block';
+            } else {
+                prevCauseText.innerText = '-';
+                // Opcional: esconder label se não tiver causa, mas deixar assim por padrão
+            }
+
+            // Popula Plano
+            prevPlanText.innerText = prevAnalysis.planoAcao ? `"${prevAnalysis.planoAcao}"` : "-";
             prevMetaValue.innerText = prevAnalysis.metaProximoMes ? formatVal(prevAnalysis.metaProximoMes, item.format) : "N/D";
 
             // --- CÁLCULOS AVANÇADOS (Crescimento Real) ---

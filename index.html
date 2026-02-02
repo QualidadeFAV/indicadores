@@ -402,11 +402,18 @@
                         <i data-lucide="history" size="14"></i> Resultado da Ação Anterior
                     </h4>
                     <div style="display: flex; gap: 20px; align-items: center;">
-                        <div style="flex: 1;">
+                        <div style="flex: 1; min-width: 0;"> <!-- min-width: 0 fixes flex child overflow -->
+
+                            <!-- CAUSA RAIZ (Novo) -->
+                            <span style="display:block; font-size: 0.7rem; color: var(--text-muted);">Causa Raiz:</span>
+                            <p id="prevCauseText"
+                                style="margin: 4px 0 10px 0; font-size: 0.9rem; color: var(--text-main); font-style: italic; word-wrap: break-word; overflow-wrap: break-word;">
+                                -</p>
+
                             <span style="display:block; font-size: 0.7rem; color: var(--text-muted);">Plano
                                 Definido:</span>
                             <p id="prevPlanText"
-                                style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-main); font-style: italic;">
+                                style="margin: 4px 0 0 0; font-size: 0.9rem; color: var(--text-main); font-style: italic; word-wrap: break-word; overflow-wrap: break-word;">
                                 -</p>
                         </div>
                         <div style="text-align: right;">
