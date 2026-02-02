@@ -58,33 +58,23 @@
                     </button>
 
                     <div class="view-toggles">
-                        <button class="view-btn active" id="btn-view-table" onclick="switchView('table')"><i
-                                data-lucide="table"></i></button>
-                        <button class="view-btn" id="btn-view-exec" onclick="switchView('exec')"><i
-                                data-lucide="bar-chart-2"></i></button>
+                        <button class="view-btn active" id="btn-view-table" onclick="switchView('table')"
+                            title="Visão Tabela">
+                            <i data-lucide="table"></i>
+                        </button>
+                        <button class="view-btn" id="btn-view-exec" onclick="switchView('exec')"
+                            title="Visão Analítica">
+                            <i data-lucide="bar-chart-2"></i>
+                        </button>
+                        <button class="view-btn" id="btn-view-manager" onclick="switchView('manager')"
+                            title="Visão Gerencial">
+                            <i data-lucide="briefcase"></i>
+                        </button>
                     </div>
                 </div>
             </header>
 
-            <div class="kpi-bar">
-                <div class="kpi-item">
-                    <span class="kpi-label" id="kpi-perf-label">Performance Institucional</span>
-                    <span class="kpi-value" id="kpi-perf">-</span>
-                </div>
-                <div class="kpi-item">
-                    <div class="kpi-label-row">
-                        <span>Pontualidade</span>
-                        <button class="tiny-btn" onclick="configDeadline()" title="Ajustar Prazo">
-                            <i data-lucide="settings-2"></i>
-                        </button>
-                    </div>
-                    <span class="kpi-value" id="kpi-punc">-</span>
-                </div>
-                <div class="kpi-item bad">
-                    <span class="kpi-label">Críticos</span>
-                    <span class="kpi-value" id="kpi-crit">-</span>
-                </div>
-            </div>
+
         </div>
 
         <div class="content-viewport" id="mainContentArea">
@@ -122,6 +112,26 @@
             </div>
 
             <div id="view-exec" class="view-pane" style="display:none">
+                <!-- KPI Bar Moved Here -->
+                <div class="kpi-bar"
+                    style="margin-bottom: 20px; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;">
+                    <div class="kpi-item">
+                        <span class="kpi-label" id="kpi-perf-label">Performance Institucional</span>
+                        <span class="kpi-value" id="kpi-perf">-</span>
+                    </div>
+                    <div class="kpi-item">
+                        <div class="kpi-label-row">
+                            <span>Pontualidade</span>
+                            <!-- Removed Settings Button here to simplify view -->
+                        </div>
+                        <span class="kpi-value" id="kpi-punc">-</span>
+                    </div>
+                    <div class="kpi-item bad">
+                        <span class="kpi-label">Críticos</span>
+                        <span class="kpi-value" id="kpi-crit">-</span>
+                    </div>
+                </div>
+
                 <div class="charts-grid" id="charts-area">
                     <div class="chart-card full">
                         <h3>Performance Anual</h3>
@@ -134,6 +144,95 @@
                     <div class="chart-card">
                         <h3>Pontualidade</h3>
                         <div class="chart-box"><canvas id="chart-punc"></canvas></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-manager" class="view-pane" style="display:none">
+                <!-- Manager Header -->
+                <div class="manager-header-grid">
+                    <div class="manager-kpi-card cascade-item" style="animation-delay: 0.05s"
+                        data-tooltip="Média ponderada dos scores de todos os setores (Maturidade).">
+                        <div class="mk-icon success"><i data-lucide="activity"></i></div>
+                        <div class="mk-content">
+                            <span class="mk-label">Maturidade Geral</span>
+                            <span class="mk-value" id="man-score-total">-</span>
+                        </div>
+                    </div>
+                    <div class="manager-kpi-card cascade-item" style="animation-delay: 0.1s"
+                        data-tooltip="Soma total de resultados 'Ruins' (Vermelhos) em todos os indicadores no ano.">
+                        <div class="mk-icon warn"><i data-lucide="alert-triangle"></i></div>
+                        <div class="mk-content">
+                            <span class="mk-label">Indicadores Críticos</span>
+                            <span class="mk-value" id="man-critical-total">-</span>
+                        </div>
+                    </div>
+                    <div class="manager-kpi-card"
+                        data-tooltip="% de resultados Críticos que possuem análise gerencial preenchida.">
+                        <div class="mk-icon info"><i data-lucide="file-check"></i></div>
+                        <div class="mk-content">
+                            <span class="mk-label">Cobertura de Análises</span>
+                            <span class="mk-value" id="man-analysis-coverage">-</span>
+                        </div>
+                    </div>
+                    <div class="manager-kpi-card" style="border-right:none"
+                        data-tooltip="% de Planos de Ação onde o resultado melhorou no mês seguinte.">
+                        <div class="mk-icon primary"><i data-lucide="trending-up"></i></div>
+                        <div class="mk-content">
+                            <span class="mk-label">Eficácia dos Planos</span>
+                            <span class="mk-value" id="man-plan-efficacy">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Manager Content Grid -->
+                <div class="manager-grid">
+
+                    <!-- Left Column: Sector Ranking -->
+                    <div class="manager-section box-shadowed">
+                        <h3 class="section-title"
+                            data-tooltip="Score = 40% Metas Atingidas + 30% Pontualidade + 30% Cobertura de Análises"><i
+                                data-lucide="trophy"></i> Ranking de Setores (Maturidade)</h3>
+                        <div class="table-scroller">
+                            <table class="manager-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width:60px; text-align:center">#</th>
+                                        <th>Setor</th>
+                                        <th style="text-align:center">Score</th>
+                                        <th style="text-align:right">Detalhes</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="manager-sector-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Alerts & Insights -->
+                    <div class="manager-feed">
+
+                        <!-- Reincidentes -->
+                        <div class="manager-section box-shadowed" style="flex:1">
+                            <h3 class="section-title warn"
+                                data-tooltip="Indicadores com resultado ruim por 2 ou mais meses consecutivos."><i
+                                    data-lucide="flame"></i> Alerta: Reincidentes (>2 meses)
+                            </h3>
+                            <div class="insight-list" id="man-recurrent-list">
+                                <!-- Items injected here -->
+                            </div>
+                        </div>
+
+                        <!-- Sem Análise -->
+                        <div class="manager-section box-shadowed" style="flex:1">
+                            <h3 class="section-title danger"
+                                data-tooltip="Indicadores Críticos (Vermelhos) que ainda não possuem análise cadastrada.">
+                                <i data-lucide="file-warning"></i> Críticos Sem Análise
+                            </h3>
+                            <div class="insight-list" id="man-missing-list">
+                                <!-- Items injected here -->
+                            </div>
+                        </div>
+
                     </div>
                 </div>
             </div>

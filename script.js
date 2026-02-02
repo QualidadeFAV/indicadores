@@ -374,6 +374,8 @@ function renderTable(data) {
     const sectors = currentSector === 'Todos' ? [...new Set(data.map(i => i.sector))].sort() : [currentSector];
     let delayCounter = 0;
 
+    // PRE-CALC PARA REINCIDÊNCIA (Omitido visualmente na tabela conforme pedido)
+
     sectors.forEach(sec => {
         const items = data.filter(i => i.sector === sec);
         if (items.length === 0) return;
@@ -391,6 +393,7 @@ function renderTable(data) {
 
             const logicLabel = item.logic === 'maior' ? 'Maior Melhor ↑' : 'Menor Melhor ↓';
 
+            // Clean Render (Sem Badges)
             let html = `
                 <td class="col-name" onclick="openMainModal(${item.id})">${item.name}</td>
                 <td class="col-meta" onclick="openMainModal(${item.id})">
@@ -413,7 +416,8 @@ function renderTable(data) {
                 const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));
                 const hasDraft = (draft && draft.id === item.id && draft.idx === i && draft.year === currentYear);
 
-                const analysisClass = (hasAnalysis || hasDraft) ? ' has-analysis' : '';
+                // Apenas bolinha azul se tiver análise (sem warning vermelho)
+                let analysisClass = (hasAnalysis || hasDraft) ? ' has-analysis' : '';
 
                 html += `<td class="${cls}${analysisClass}" onclick="openAnalysisModal(${item.id}, ${i})">
                     ${formatVal(val, item.format)}
@@ -1405,8 +1409,43 @@ function switchToEditMode() { document.getElementById('mode-view').style.display
 function switchToViewMode() { document.getElementById('mode-view').style.display = 'block'; document.getElementById('footer-view').style.display = 'flex'; document.getElementById('mode-edit').style.display = 'none'; document.getElementById('footer-edit').style.display = 'none'; if (currentMetricId) setText('modalTitle', fullDB[currentYear].find(i => i.id == currentMetricId).name); }
 function closeModal(id) { document.getElementById(id).classList.remove('open'); }
 function setSector(val) { currentSector = val; renderApp(); }
-function setYear(y) { currentYear = y; renderApp(); }
-function switchView(v) { currentView = v; document.getElementById('view-table').style.display = v === 'table' ? 'block' : 'none'; document.getElementById('view-exec').style.display = v === 'exec' ? 'block' : 'none'; document.getElementById('btn-view-table').classList.toggle('active', v === 'table'); document.getElementById('btn-view-exec').classList.toggle('active', v === 'exec'); renderApp(); }
+function setYear(y) {
+    currentYear = y;
+    if (currentView === 'manager') renderManagerialView();
+    else renderApp();
+}
+// --- SWITCH VIEW (CONTROLE GERAL) ---
+function switchView(v) {
+    currentView = v;
+    document.getElementById('view-table').style.display = v === 'table' ? 'block' : 'none';
+    document.getElementById('view-exec').style.display = v === 'exec' ? 'block' : 'none';
+    document.getElementById('view-manager').style.display = v === 'manager' ? 'block' : 'none';
+
+    // Toggle KPI Bar (Redundante na visão gerencial)
+    const kpiBar = document.querySelector('.kpi-bar');
+    if (kpiBar) kpiBar.style.display = v === 'manager' ? 'none' : 'flex';
+
+    // Toggle Filters
+    const sectorFilter = document.getElementById('sector-filter');
+    const yearSelector = document.querySelector('.year-selector');
+
+    if (v === 'manager') {
+        if (sectorFilter) { sectorFilter.disabled = true; sectorFilter.style.opacity = '0.5'; }
+        // Enable Year Selector for Manager View
+        if (yearSelector) { yearSelector.style.pointerEvents = 'all'; yearSelector.style.opacity = '1'; }
+    } else {
+        if (sectorFilter) { sectorFilter.disabled = false; sectorFilter.style.opacity = '1'; }
+        if (yearSelector) { yearSelector.style.pointerEvents = 'all'; yearSelector.style.opacity = '1'; }
+    }
+
+    document.getElementById('btn-view-table').classList.toggle('active', v === 'table');
+    document.getElementById('btn-view-exec').classList.toggle('active', v === 'exec');
+    const btnMan = document.getElementById('btn-view-manager');
+    if (btnMan) btnMan.classList.toggle('active', v === 'manager');
+
+    if (v === 'manager') renderManagerialView();
+    else renderApp();
+}
 function toggleLoading(s) { document.getElementById('loading-overlay').style.display = s ? 'flex' : 'none'; }
 function showToast(m, t) { const el = document.getElementById('toast'); el.innerText = m; el.className = `toast ${t}`; el.classList.add('show'); setTimeout(() => el.classList.remove('show'), 3000); }
 function setText(id, txt) { const el = document.getElementById(id); if (el) el.innerText = txt; }
@@ -1790,4 +1829,277 @@ function getAnalysis(id, year, idx) {
         return analysisDB[id][year][idx];
     }
     return null;
+}
+
+
+/* =================================================================
+   --- MANAGERIAL VIEW LOGIC (NEW CORE) ---
+   ================================================================= */
+
+function renderManagerialView() {
+    const data = fullDB[currentYear];
+    const metrics = calculateManagerialMetrics(data);
+
+    // 1. Render KPIs
+    // Maturidade Geral (Média dos Scores dos Setores)
+    const avgMaturity = metrics.globalMaturity;
+    setText('man-score-total', avgMaturity);
+
+    // Críticos Total (Soma de todos os meses ruins do ano)
+    setText('man-critical-total', metrics.totalCriticalCount);
+
+    // Cobertura de Análises Global
+    setText('man-analysis-coverage', metrics.globalCoverage + "%");
+
+    // Eficácia (Quantos planos geraram melhora / Total planos)
+    setText('man-plan-efficacy', metrics.globalEfficacy + "%");
+
+
+    // 2. Render Sector Ranking
+    const tbody = document.getElementById('manager-sector-list');
+    tbody.innerHTML = '';
+
+    metrics.sectorRanking.forEach((sec, idx) => {
+        let badgeClass = 'score-low';
+        if (sec.score >= 80) badgeClass = 'score-high';
+        else if (sec.score >= 50) badgeClass = 'score-med';
+
+        // Lógica de Medalhas (Com Ícones)
+        let rankDisplay = `<span class="rank-text">${idx + 1}</span>`;
+        if (idx === 0) rankDisplay = `<div class="rank-medal medal-gold"><i data-lucide="trophy" size="14"></i></div>`;
+        else if (idx === 1) rankDisplay = `<div class="rank-medal medal-silver"><i data-lucide="medal" size="14"></i></div>`;
+        else if (idx === 2) rankDisplay = `<div class="rank-medal medal-bronze"><i data-lucide="medal" size="14"></i></div>`;
+
+        // Lógica de Texto de Cobertura
+        let covText = `${sec.coverage}% Cob.`;
+        if (sec.criticos === 0) {
+            covText = `<span style="opacity:0.5; font-style:italic;">N/A (Cob.)</span>`;
+        }
+
+        tbody.innerHTML += `
+            <tr class="cascade-item" style="animation-delay: ${0.2 + (idx * 0.05)}s" onclick="setSector('${sec.name}'); switchView('exec');">
+                <td style="text-align:center;">${rankDisplay}</td>
+                <td style="font-weight:600; color:var(--text-main)">${sec.name}</td>
+                <td style="text-align:center"><span class="score-badge ${badgeClass}">${sec.score}</span></td>
+                <td style="text-align:right; font-size:0.75rem; color:var(--text-muted)">
+                   ${sec.punc}% Pontual • ${covText}
+                </td>
+            </tr>
+        `;
+    });
+
+    // 3. Render Recurrent List (Reincidentes) - ORDENADO POR MESES (DESC)
+    const recList = document.getElementById('man-recurrent-list');
+    recList.innerHTML = '';
+
+    // Ordenação aqui
+    const sortedRecurrent = metrics.recurrentItems.sort((a, b) => b.consecutive - a.consecutive);
+
+    if (sortedRecurrent.length === 0) {
+        recList.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-muted)">Nenhuma reincidência detectada.</div>';
+    } else {
+        sortedRecurrent.forEach((item, i) => {
+            recList.innerHTML += `
+                <div class="insight-item cascade-item" style="animation-delay: ${0.2 + (i * 0.1)}s" onclick="openMainModal(${item.id})">
+                    <div class="ii-main">
+                        <div class="ii-title">${item.name} <span class="badge-recurrent">${item.consecutive} Meses</span></div>
+                        <div class="ii-sub">Setor: ${item.sector}</div>
+                    </div>
+                    <div class="ii-action">Ver <i data-lucide="arrow-right" size="14"></i></div>
+                </div>
+            `;
+        });
+    }
+
+    // 4. Render Missing Analysis (Sem Análise)
+    const missList = document.getElementById('man-missing-list');
+    missList.innerHTML = '';
+
+    if (metrics.missingAnalysisItems.length === 0) {
+        missList.innerHTML = '<div style="padding:20px; text-align:center; color:var(--text-muted)">Tudo em dia! Nenhuma pendência.</div>';
+    } else {
+        metrics.missingAnalysisItems.forEach((item, i) => {
+            missList.innerHTML += `
+                <div class="insight-item cascade-item" style="animation-delay: ${0.2 + (i * 0.1)}s" onclick="openAnalysisModal(${item.id}, ${item.monthIdx})">
+                    <div class="ii-main">
+                        <div class="ii-title">${item.name}</div>
+                        <div class="ii-sub">Mês: ${months[item.monthIdx]} • <span style="color:var(--bad)">Sem Análise</span></div>
+                    </div>
+                    <div class="ii-action">Resolver <i data-lucide="edit-3" size="14"></i></div>
+                </div>
+            `;
+        });
+    }
+
+    lucide.createIcons();
+}
+
+function calculateManagerialMetrics(data) {
+    // Agrupamento por Setor
+    const sectors = {};
+    const recurrentItems = [];
+    const missingAnalysisItems = [];
+
+    let totalPlanos = 0;
+    let totalMelhora = 0;
+    let totalCriticosYear = 0;
+    let totalAnalisesYear = 0;
+
+    // Inicializa Setores
+    data.forEach(item => {
+        if (!sectors[item.sector]) {
+            sectors[item.sector] = {
+                name: item.sector,
+                metaHits: 0, metaTotal: 0,
+                puncHits: 0, puncTotal: 0,
+                criticos: 0, analises: 0
+            };
+        }
+    });
+
+    data.forEach(item => {
+        const sec = sectors[item.sector];
+        let consecutiveBad = 0;
+
+        // Loop Mensal
+        for (let i = 0; i < 12; i++) {
+            const val = item.data[i];
+            const hasVal = (val !== null && val !== "" && val !== "NaN");
+
+            // 1. Meta (Atingimento)
+            if (hasVal) {
+                sec.metaTotal++;
+                const st = getStatus(val, item.meta, item.logic, item.format);
+
+                if (st === 'good') {
+                    sec.metaHits++;
+                    consecutiveBad = 0; // Reset
+                } else if (st === 'bad') {
+                    sec.criticos++;
+                    totalCriticosYear++;
+                    consecutiveBad++;
+
+                    // Check Missing Analysis
+                    const ana = getAnalysis(item.id, currentYear, i);
+                    if (ana) {
+                        sec.analises++;
+                        totalAnalisesYear++;
+
+                        // Check Improvement (Eficácia)
+                        // Olha o MÊS SEGUINTE (i+1) pra ver se melhorou
+                        if (i < 11) { // Só se tiver mês seguinte
+                            const nextVal = item.data[i + 1];
+                            const hasNext = (nextVal !== null && nextVal !== "");
+                            if (hasNext) {
+                                totalPlanos++; // Tinha plano no mês i, e temos dado no i+1 para validar
+                                if (checkImprovement(nextVal, val, item.logic)) {
+                                    totalMelhora++;
+                                }
+                            }
+                        }
+
+                    } else {
+                        // Está ruim e SEM análise
+                        missingAnalysisItems.push({
+                            id: item.id,
+                            name: item.name,
+                            monthIdx: i,
+                            sector: item.sector
+                        });
+                    }
+                } else {
+                    consecutiveBad = 0;
+                }
+            }
+
+            // 2. Pontualidade
+            if (item.dates && item.dates[i] && hasVal) {
+                sec.puncTotal++;
+                if (checkOnTime(item.dates[i], i)) sec.puncHits++;
+            }
+
+            // 3. Reincidência Check
+            if (consecutiveBad >= 2) {
+                // Adiciona se já não tiver adicionado
+                if (!recurrentItems.find(r => r.id === item.id)) {
+                    recurrentItems.push({
+                        id: item.id,
+                        name: item.name,
+                        sector: item.sector,
+                        consecutive: consecutiveBad
+                    });
+                } else {
+                    // Atualiza count se for maior
+                    const r = recurrentItems.find(r => r.id === item.id);
+                    if (consecutiveBad > r.consecutive) r.consecutive = consecutiveBad;
+                }
+            }
+        }
+    });
+
+    // Calcula Scores Finais
+    const sectorRanking = Object.values(sectors).map(s => {
+        // % Metas
+        const percMeta = s.metaTotal ? (s.metaHits / s.metaTotal) * 100 : 0;
+        // % Pontualidade
+        const percPunc = s.puncTotal ? (s.puncHits / s.puncTotal) * 100 : 0;
+
+        // % Cobertura (Analises / Críticos)
+        let percCob = 100;
+        let score = 0;
+
+        if (s.criticos > 0) {
+            percCob = (s.analises / s.criticos) * 100;
+            // 40% Resultado + 30% Disciplina + 30% Gestão
+            score = Math.round((percMeta * 0.4) + (percPunc * 0.3) + (percCob * 0.3));
+        } else {
+            // Se não teve críticos, a Cobertura (Gestão) não entra na conta para não inflar artificialmente
+            // Apenas re-normalizamos os outros 70% (40 Performance + 30 Pontualidade) para valerem 100%
+            // Peso Meta: 40/70 ~= 0.57
+            // Peso Punc: 30/70 ~= 0.43
+            score = Math.round(((percMeta * 0.4) + (percPunc * 0.3)) / 0.7);
+        }
+
+        return {
+            name: s.name,
+            score: score,
+            punc: Math.round(percPunc),
+            coverage: Math.round(percCob),
+            criticos: s.criticos // Passando para o renderizador saber
+        };
+    }).sort((a, b) => b.score - a.score);
+
+    // Global Metrics
+    const globalMaturity = sectorRanking.length
+        ? Math.round(sectorRanking.reduce((acc, curr) => acc + curr.score, 0) / sectorRanking.length)
+        : 0;
+
+    const globalCoverage = totalCriticosYear
+        ? Math.round((totalAnalisesYear / totalCriticosYear) * 100)
+        : 100;
+
+    const globalEfficacy = totalPlanos
+        ? Math.round((totalMelhora / totalPlanos) * 100)
+        : 0;
+
+    return {
+        sectorRanking,
+        recurrentItems,
+        missingAnalysisItems,
+        globalMaturity,
+        totalCriticalCount: totalCriticosYear,
+        globalCoverage,
+        globalEfficacy
+    };
+}
+
+function checkImprovement(curr, prev, logic) {
+    if (!curr || !prev) return false;
+    // Transforma para numero
+    const c = parseFloat(String(curr).replace(',', '.'));
+    const p = parseFloat(String(prev).replace(',', '.'));
+    if (isNaN(c) || isNaN(p)) return false;
+
+    if (logic === 'maior') return c > p;
+    else return c < p;
 }

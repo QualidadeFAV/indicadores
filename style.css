@@ -499,6 +499,39 @@ td.has-analysis::after {
     opacity: 0.8;
 }
 
+td.missing-analysis::after {
+    content: '!';
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 12px;
+    height: 12px;
+    background-color: var(--bad);
+    color: white;
+    font-size: 8px;
+    font-weight: bold;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    box-shadow: 0 0 0 1px var(--bg-panel);
+    animation: pulse-red 2s infinite;
+}
+
+@keyframes pulse-red {
+    0% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 4px rgba(239, 68, 68, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+}
+
 /* Empty State */
 .empty-state {
     padding: 60px 0;
@@ -797,6 +830,309 @@ td.has-analysis::after {
 .tl-dot:hover {
     transform: scale(1.3);
     border-color: var(--text-main);
+}
+
+/* =================================================================
+   --- MANAGERIAL VIEW STYLES (NEW) ---
+   ================================================================= */
+
+.manager-header-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    /* overflow: hidden; causes tooltip clipping */
+}
+
+.manager-header-grid>.manager-kpi-card:first-child {
+    border-top-left-radius: 11px;
+    border-bottom-left-radius: 11px;
+}
+
+.manager-header-grid>.manager-kpi-card:last-child {
+    border-top-right-radius: 11px;
+    border-bottom-right-radius: 11px;
+}
+
+.manager-kpi-card {
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-right: 1px solid var(--border);
+    transition: background 0.2s;
+}
+
+.manager-kpi-card:hover {
+    background: var(--bg-elevated);
+}
+
+.mk-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+}
+
+.mk-icon.success {
+    color: var(--good);
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.2);
+}
+
+.mk-icon.warn {
+    color: var(--warn);
+    background: rgba(245, 158, 11, 0.1);
+    border-color: rgba(245, 158, 11, 0.2);
+}
+
+.mk-icon.danger {
+    color: var(--bad);
+    background: rgba(239, 68, 68, 0.1);
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.mk-icon.info {
+    color: #a855f7;
+    background: rgba(168, 85, 247, 0.1);
+    border-color: rgba(168, 85, 247, 0.2);
+}
+
+.mk-icon.primary {
+    color: var(--accent);
+    background: rgba(59, 130, 246, 0.1);
+    border-color: rgba(59, 130, 246, 0.2);
+}
+
+.mk-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.mk-label {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
+.mk-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: var(--text-main);
+    line-height: 1.2;
+}
+
+/* Grid Layout */
+.manager-grid {
+    display: flex;
+    gap: 20px;
+    height: calc(100vh - 220px);
+    /* Ajuste para viewport */
+}
+
+/* Sections */
+.manager-section {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    /* overflow: hidden; causes tooltip clipping */
+    min-height: 0;
+    /* needed for nested scroll to work without overflow hidden */
+    flex: 1;
+    /* Ocupar espaço disponível */
+    min-width: 300px;
+}
+
+.manager-section>.section-title:first-child {
+    border-top-left-radius: 11px;
+    border-top-right-radius: 11px;
+}
+
+/* Ensure bottom corners for the last element (likely scroller or list) */
+.manager-section>*:last-child {
+    border-bottom-left-radius: 11px;
+    border-bottom-right-radius: 11px;
+}
+
+
+.manager-feed {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    min-height: 0;
+    /* needed for nested flex scroll */
+}
+
+.box-shadowed {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.section-title {
+    padding: 15px 20px;
+    margin: 0;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-main);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-elevated);
+}
+
+.section-title.warn {
+    color: var(--warn);
+}
+
+.section-title.danger {
+    color: var(--bad);
+}
+
+/* Custom Scroll inside sections */
+.table-scroller,
+.insight-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0;
+}
+
+/* Manager Table */
+.manager-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.manager-table th {
+    background: var(--bg-body);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.manager-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.9rem;
+}
+
+.manager-table tr:hover td {
+    background: var(--bg-elevated);
+}
+
+.score-badge {
+    padding: 2px 8px;
+    border-radius: 99px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    background: var(--bg-body);
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+}
+
+.score-high {
+    color: var(--good);
+    border-color: rgba(16, 185, 129, 0.3);
+    background: rgba(16, 185, 129, 0.05);
+}
+
+.score-med {
+    color: var(--warn);
+    border-color: rgba(245, 158, 11, 0.3);
+    background: rgba(245, 158, 11, 0.05);
+}
+
+.score-low {
+    color: var(--bad);
+    border-color: rgba(239, 68, 68, 0.3);
+    background: rgba(239, 68, 68, 0.05);
+}
+
+/* Insight Items */
+.insight-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+    cursor: pointer;
+}
+
+.insight-item:hover {
+    background: var(--bg-elevated);
+}
+
+.insight-item:last-child {
+    border-bottom: none;
+}
+
+.ii-main {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.ii-title {
+    font-weight: 600;
+    color: var(--text-main);
+    font-size: 0.95rem;
+}
+
+.ii-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+}
+
+.ii-action {
+    font-size: 0.8rem;
+    color: var(--accent);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    opacity: 0.8;
+}
+
+.insight-item:hover .ii-action {
+    opacity: 1;
+}
+
+/* Badges for Analysis */
+.badge-recurrent {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    background: #450a0a;
+    /* Red 950 */
+    color: #fca5a5;
+    /* Red 300 */
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    border: 1px solid #7f1d1d;
+    margin-left: 6px;
+}
+
+.badge-missing {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--bad);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
 }
 
 .tl-dot.ok {
@@ -1278,69 +1614,7 @@ select.input-field {
     animation: cascade-slide 0.5s ease forwards;
 }
 
-/* =================================================================
-   --- CUSTOM TOOLTIP (ABRINDO PARA BAIXO) ---
-   ================================================================= */
-
-[data-tooltip] {
-    position: relative;
-    cursor: help;
-}
-
-[data-tooltip]::after {
-    content: attr(data-tooltip);
-    position: absolute;
-    top: 115%;
-    bottom: auto;
-    left: 50%;
-    transform: translateX(-50%) translateY(-10px);
-
-    background-color: var(--tooltip-bg);
-    color: var(--tooltip-text);
-    border: 1px solid var(--border);
-
-    padding: 8px 12px;
-    border-radius: 6px;
-    font-size: 0.7rem;
-    font-weight: 500;
-    line-height: 1.4;
-    white-space: pre-wrap;
-    text-align: center;
-    width: max-content;
-    max-width: 220px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
-    z-index: 9999;
-
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.2s, transform 0.2s;
-    pointer-events: none;
-}
-
-[data-tooltip]::before {
-    content: '';
-    position: absolute;
-    top: 105%;
-    bottom: auto;
-    left: 50%;
-    transform: translateX(-50%) translateY(-10px);
-
-    border-width: 6px;
-    border-style: solid;
-    border-color: transparent transparent var(--tooltip-bg) transparent;
-
-    visibility: hidden;
-    opacity: 0;
-    transition: opacity 0.2s, transform 0.2s;
-    z-index: 9999;
-}
-
-[data-tooltip]:hover::after,
-[data-tooltip]:hover::before {
-    visibility: visible;
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-}
+/* Legacy tooltip block removed */
 
 /* =================================================================
    --- ADD-ON: ANÁLISE GERENCIAL (MANAGER ANALYTICS V2) ---
@@ -1548,4 +1822,137 @@ textarea.input-field:focus {
     height: 5px;
     top: 6px;
     right: 6px;
+}
+
+/* =================================================================
+   --- TOOLTIPS (Data Attribute) ---
+   ================================================================= */
+/* =================================================================
+   --- TOOLTIPS (REIMPLEMENTAÇÃO LIMPA) ---
+   ================================================================= */
+[data-tooltip] {
+    position: relative;
+    cursor: help;
+}
+
+/* O box com o texto - SIMPLIFICADO (PARA BAIXO) */
+[data-tooltip]::before {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+
+    /* Aparência */
+    background: #27272a;
+    color: #ffffff;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    line-height: 1.4;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+
+    /* Layout */
+    width: max-content;
+    max-width: 250px;
+    white-space: pre-wrap;
+    text-align: center;
+    pointer-events: none;
+
+    /* Z-INDEX e Posição */
+    z-index: 100001;
+    margin-top: 6px;
+
+    /* Animação */
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.2s ease;
+}
+
+/* Hover State */
+[data-tooltip]:hover::before {
+    opacity: 1;
+    visibility: visible;
+    transform: translateX(-50%) translateY(2px);
+}
+
+/* Fix Ranking Table Text Overflow */
+.manager-table td {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    vertical-align: middle;
+}
+
+/* Fix Tooltip Z-Index Clipping */
+.manager-header-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 1fr;
+    gap: 15px;
+    margin-bottom: 25px;
+    position: relative;
+    /* Create stacking context */
+    z-index: 200;
+    /* Ensure it stays above everything below it */
+}
+
+/* Medalhas - Design Moderno e Discreto (Flat & Subtle) */
+.rank-medal {
+    display: inline-flex;
+    /* Fix centering: acts like text now */
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    /* Slightly more rounded */
+    vertical-align: middle;
+    /* Aligns with text baseline */
+}
+
+/* Ensure SVG icons act as expected */
+.rank-medal svg,
+.rank-medal i {
+    width: 18px;
+    height: 18px;
+    stroke-width: 2.5px;
+    /* Make icons bolder */
+    stroke: currentColor;
+    /* Force color inheritance */
+}
+
+/* Gold */
+.medal-gold {
+    background: rgba(251, 191, 36, 0.15);
+    /* Amber-400 opacity */
+    color: #fbbf24;
+    /* Amber-400 */
+    box-shadow: 0 0 0 1px rgba(251, 191, 36, 0.2);
+    /* Subtle contour */
+}
+
+/* Silver */
+.medal-silver {
+    background: rgba(228, 228, 231, 0.15);
+    /* Zinc-200 opacity */
+    color: #e4e4e7;
+    /* Zinc-200 */
+    box-shadow: 0 0 0 1px rgba(228, 228, 231, 0.2);
+}
+
+/* Bronze */
+.medal-bronze {
+    background: rgba(253, 186, 116, 0.15);
+    /* Orange-300 opacity */
+    color: #fdba74;
+    /* Orange-300 */
+    box-shadow: 0 0 0 1px rgba(253, 186, 116, 0.2);
+}
+
+.rank-text {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: var(--text-muted);
 }
