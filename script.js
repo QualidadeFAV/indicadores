@@ -1855,7 +1855,7 @@ function renderManagerialView() {
     setText('man-critical-total', metrics.totalCriticalCount);
 
     // Cobertura de Análises Global
-    setText('man-analysis-coverage', metrics.globalCoverage + "%");
+    setText('man-analysis-coverage', (metrics.globalCoverage !== null) ? metrics.globalCoverage + "%" : "N/A");
 
     // Eficácia (Quantos planos geraram melhora / Total planos)
     setText('man-plan-efficacy', metrics.globalEfficacy + "%");
@@ -1877,7 +1877,7 @@ function renderManagerialView() {
         else if (idx === 2) rankDisplay = `<div class="rank-medal medal-bronze"><i data-lucide="medal" size="14"></i></div>`;
 
         // Lógica de Texto de Cobertura
-        let covText = `${sec.coverage}% Cob.`;
+        let covText = (sec.coverage !== null) ? `${sec.coverage}% Cob.` : `<span style="opacity:0.5; font-style:italic">N/A (Cob.)</span>`;
         if (sec.criticos === 0) {
             covText = `<span style="opacity:0.5; font-style:italic;">N/A (Cob.)</span>`;
         }
@@ -2051,7 +2051,7 @@ function calculateManagerialMetrics(data) {
         const percPunc = s.puncTotal ? (s.puncHits / s.puncTotal) * 100 : 0;
 
         // % Cobertura (Analises / Críticos)
-        let percCob = 100;
+        let percCob = null; // Default to null (N/A)
         let score = 0;
 
         if (s.criticos > 0) {
@@ -2061,8 +2061,6 @@ function calculateManagerialMetrics(data) {
         } else {
             // Se não teve críticos, a Cobertura (Gestão) não entra na conta para não inflar artificialmente
             // Apenas re-normalizamos os outros 70% (40 Performance + 30 Pontualidade) para valerem 100%
-            // Peso Meta: 40/70 ~= 0.57
-            // Peso Punc: 30/70 ~= 0.43
             score = Math.round(((percMeta * 0.4) + (percPunc * 0.3)) / 0.7);
         }
 
@@ -2070,7 +2068,7 @@ function calculateManagerialMetrics(data) {
             name: s.name,
             score: score,
             punc: Math.round(percPunc),
-            coverage: Math.round(percCob),
+            coverage: (percCob !== null) ? Math.round(percCob) : null,
             criticos: s.criticos // Passando para o renderizador saber
         };
     }).sort((a, b) => b.score - a.score);
@@ -2082,7 +2080,7 @@ function calculateManagerialMetrics(data) {
 
     const globalCoverage = totalCriticosYear
         ? Math.round((totalAnalisesYear / totalCriticosYear) * 100)
-        : 100;
+        : null; // Se não tem críticos, não tem cobertura (N/A)
 
     const globalEfficacy = totalPlanos
         ? Math.round((totalMelhora / totalPlanos) * 100)
