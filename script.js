@@ -11,7 +11,7 @@ const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', '
 
 // --- ESTADO GLOBAL ---
 let fullDB = { "2025": [], "2026": [] };
-let currentYear = '2025';
+let currentYear = String(new Date().getFullYear());
 let currentSector = 'Todos';
 let currentView = 'table';
 let currentTheme = localStorage.getItem('fav_theme') || 'dark';
