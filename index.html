@@ -17,6 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="mini-kpi.css">
 
 </head>
 
@@ -112,29 +113,25 @@
             </div>
 
             <div id="view-exec" class="view-pane" style="display:none">
-                <!-- KPI Bar Moved Here -->
-                <div class="kpi-bar"
-                    style="margin-bottom: 20px; border-radius: 8px; border: 1px solid var(--border); overflow: hidden;">
-                    <div class="kpi-item">
-                        <span class="kpi-label" id="kpi-perf-label">Performance Institucional</span>
-                        <span class="kpi-value" id="kpi-perf">-</span>
-                    </div>
-                    <div class="kpi-item">
-                        <div class="kpi-label-row">
-                            <span>Pontualidade</span>
-                            <!-- Removed Settings Button here to simplify view -->
-                        </div>
-                        <span class="kpi-value" id="kpi-punc">-</span>
-                    </div>
-                    <div class="kpi-item bad">
-                        <span class="kpi-label">Críticos</span>
-                        <span class="kpi-value" id="kpi-crit">-</span>
-                    </div>
-                </div>
-
                 <div class="charts-grid" id="charts-area">
                     <div class="chart-card full">
-                        <h3>Performance Anual</h3>
+                        <div class="chart-header-row">
+                            <h3>Performance Anual</h3>
+                            <div class="mini-kpi-group">
+                                <div class="mini-kpi">
+                                    <span class="mk-label" id="kpi-perf-label">Perf. Inst.</span>
+                                    <span class="mk-val" id="kpi-perf">-</span>
+                                </div>
+                                <div class="mini-kpi">
+                                    <span class="mk-label">Pontualidade</span>
+                                    <span class="mk-val" id="kpi-punc">-</span>
+                                </div>
+                                <div class="mini-kpi danger">
+                                    <span class="mk-label">Críticos</span>
+                                    <span class="mk-val" id="kpi-crit">-</span>
+                                </div>
+                            </div>
+                        </div>
                         <div class="chart-box"><canvas id="chart-trend"></canvas></div>
                     </div>
                     <div class="chart-card">

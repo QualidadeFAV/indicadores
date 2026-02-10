@@ -207,9 +207,11 @@ function renderApp(filter = currentSector) {
     const perfLabel = document.getElementById('kpi-perf-label');
     if (perfLabel) {
         if (filter === 'Todos') {
-            perfLabel.innerText = "Performance Institucional";
+            perfLabel.innerText = "Perf. Inst.";
         } else {
-            perfLabel.innerText = "Performance " + filter;
+            // Tenta abreviar se for muito longo para não quebrar o layout mini
+            const name = filter.length > 15 ? filter.substring(0, 12) + '...' : filter;
+            perfLabel.innerText = "Perf. " + name;
         }
     }
 
@@ -219,6 +221,12 @@ function renderApp(filter = currentSector) {
         renderTable(filtered);
     } else {
         renderExecutiveCharts(filtered);
+    }
+
+    // Toggle do botão Adicionar (FAB) - Visível apenas na tabela
+    const fab = document.querySelector('.fab');
+    if (fab) {
+        fab.style.display = (currentView === 'table') ? 'flex' : 'none';
     }
 
     document.getElementById('btn-2025').classList.toggle('active', currentYear === '2025');
@@ -448,7 +456,8 @@ function renderExecutiveCharts(data) {
 function getChartColors() {
     const isDark = currentTheme === 'dark';
     return {
-        text: isDark ? '#a1a1aa' : '#52525b',
+        // Light Mode: Escureci para Zinc-900 (#18181b) para contraste máximo
+        text: isDark ? '#a1a1aa' : '#18181b',
         grid: isDark ? '#27272a' : '#d4d4d8',
         bg: isDark ? '#18181b' : '#ffffff',
         title: isDark ? '#ffffff' : '#18181b'
@@ -460,37 +469,36 @@ function renderTrendChart(data) {
     if (charts.trend) charts.trend.destroy();
 
     const colors = getChartColors();
+    const isLight = currentTheme === 'light';
 
-    // --- CÁLCULO DOS DADOS ---
+    // --- CÁLCULO DOS DADOS (Constância de Metas) ---
     const mAvg = Array(12).fill(0);
     const mCount = Array(12).fill(0);
-    const mTieBreaker = Array(12).fill(0); // Placar de desempate (performance relativa)
+    const mTieBreaker = Array(12).fill(0);
 
     data.forEach(item => {
         item.data.forEach((val, i) => {
             if (val !== null && val !== "") {
                 const st = getStatus(val, item.meta, item.logic, item.format);
 
-                // Contabiliza % de atingimento
+                // Contabiliza se bateu a meta (100% ou 0%)
                 if (st !== 'empty') {
                     mAvg[i] += (st === 'good' ? 100 : 0);
                     mCount[i]++;
                 }
 
-                // --- LÓGICA DE DESEMPATE ---
-                // Calcula o "excesso" ou "falta" em relação à meta para desempate
+                // --- DESEMPATE (Quem superou mais a meta) ---
                 let numVal = parseFloat(val);
                 let target = parseFloat(item.meta);
+                if (item.format === 'time') {
+                    numVal = timeToDec(val);
+                    target = timeToDec(item.meta);
+                }
 
                 if (!isNaN(numVal) && !isNaN(target) && target !== 0) {
                     let relativePerformance = 0;
-                    if (item.logic === 'maior') {
-                        // Quanto maior que a meta, melhor
-                        relativePerformance = (numVal - target) / target;
-                    } else {
-                        // Quanto menor que a meta, melhor (invertido)
-                        relativePerformance = (target - numVal) / target;
-                    }
+                    if (item.logic === 'maior') relativePerformance = (numVal - target) / target;
+                    else relativePerformance = (target - numVal) / target;
                     mTieBreaker[i] += relativePerformance;
                 }
             }
@@ -499,209 +507,334 @@ function renderTrendChart(data) {
 
     const trendData = mAvg.map((s, i) => mCount[i] ? Math.round(s / mCount[i]) : 0);
 
-    // --- DETECÇÃO DO MELHOR MÊS (COM DESEMPATE) ---
+    // --- MELHOR MÊS ---
     let maxVal = -Infinity;
     let candidates = [];
-
     trendData.forEach((val, i) => {
-        if (val > maxVal) {
-            maxVal = val;
-            candidates = [i];
-        } else if (val === maxVal) {
-            candidates.push(i);
-        }
+        if (val > maxVal) { maxVal = val; candidates = [i]; }
+        else if (val === maxVal) candidates.push(i);
     });
 
     let bestIdx = -1;
     if (maxVal > 0 && candidates.length > 0) {
-        if (candidates.length === 1) {
-            bestIdx = candidates[0];
-        } else {
-            // Empate: usa mTieBreaker para decidir quem performou "melhor"
+        if (candidates.length === 1) bestIdx = candidates[0];
+        else {
             let bestScore = -Infinity;
             candidates.forEach(idx => {
-                if (mTieBreaker[idx] > bestScore) {
-                    bestScore = mTieBreaker[idx];
-                    bestIdx = idx;
-                }
+                if (mTieBreaker[idx] > bestScore) { bestScore = mTieBreaker[idx]; bestIdx = idx; }
             });
-            // Se ainda assim empatar, pega o último (fallback)
             if (bestIdx === -1) bestIdx = candidates[candidates.length - 1];
         }
     }
 
-    // --- GRADIENTES ---
-    // 1. Gradiente Padrão (Azul)
-    const gradientNormal = ctxTrend.createLinearGradient(0, 300, 0, 0);
-    gradientNormal.addColorStop(0, '#1e3a8a');
-    gradientNormal.addColorStop(1, '#3b82f6');
+    // --- VISUAL (LINHA RETA + ANIMAÇÃO NATURAL) ---
+    const pointBgColors = trendData.map((_, i) => i === bestIdx ? '#D4AF37' : '#3b82f6');
+    const finalRadii = trendData.map((_, i) => i === bestIdx ? 8 : 4);
+    const pointHoverRadii = trendData.map((_, i) => i === bestIdx ? 10 : 7);
 
-    // 2. Gradiente Dourado (Escuro para Contraste)
-    // O usuário quer DOURADO, mas texto branco legível -> Base mais escura/bronze
-    const gradientGold = ctxTrend.createLinearGradient(0, 300, 0, 0);
-    gradientGold.addColorStop(0, '#B8860B');   // Dark Goldenrod (Base escura)
-    gradientGold.addColorStop(0.4, '#D4AF37'); // Metallic Gold (Meio Rico)
-    gradientGold.addColorStop(0.7, '#B8860B'); // Volta ao escuro
-    gradientGold.addColorStop(1, '#8B6508');   // Dark Goldenrod mais profundo (Topo Escuro)
+    // --- CONTROLE DE ANIMAÇÃO ÚNICA (Anti-Flicker) ---
+    const displayedPoints = new Set();
 
-    // Define background color array
-    const bgColors = trendData.map((_, i) => i === bestIdx ? gradientGold : gradientNormal);
-
-    // Plugin 1: Labels de Dados
+    // Plugin 1: Labels (Linhas + Valor)
     const dataLabelPlugin = {
         id: 'customDataLabels',
         afterDatasetsDraw(chart) {
             const { ctx } = chart;
-            chart.data.datasets.forEach((dataset, i) => {
-                const meta = chart.getDatasetMeta(i);
-                meta.data.forEach((bar, index) => {
-                    const value = dataset.data[index];
-                    if (value > 0) {
-                        ctx.fillStyle = '#ffffff';
-                        ctx.font = 'bold 10px Inter, sans-serif';
-                        ctx.textAlign = 'center';
-                        ctx.textBaseline = 'middle';
-                        ctx.fillText(value + '%', bar.x, bar.y + 15);
+            const meta = chart.getDatasetMeta(0);
+            const yScale = chart.scales.y;
+
+            meta.data.forEach((point, index) => {
+                if (point.x && point.y) {
+                    let value = Math.round(yScale.getValueForPixel(point.y));
+                    if (value < 0) value = 0;
+
+                    const finalValue = chart.data.datasets[0].data[index];
+
+                    if (finalValue > 0) {
+                        ctx.save();
+
+                        const isBest = index === bestIdx;
+                        // No Light Mode, se não for gold, usa preto puro para contraste
+                        const color = isBest ? '#D4AF37' : (isLight ? '#000000' : colors.text);
+
+                        ctx.fillStyle = color;
+                        // ctx.strokeStyle = color; // Linha removida
+
+                        // Fontes Extra Grandes e com Sombra para destaque total
+                        ctx.font = isBest ? '900 22px Inter' : 'bold 15px Inter';
+
+                        // CORREÇÃO: Alinha à direita se for o último mês (Dezembro/índice 11) para não cortar
+                        // Para os demais, mantém centralizado.
+                        if (index === 11) {
+                            ctx.textAlign = 'right';
+                            // Pequeno ajuste fino para desgrudar do ponto se necessário, 
+                            // mas 'right' já joga o texto para a esquerda do x.
+                        } else {
+                            ctx.textAlign = 'center';
+                        }
+
+                        ctx.textBaseline = 'bottom';
+
+                        // Sombra suave apenas no Dark Mode. No Light, removemos para evitar sujeira.
+                        if (!isLight) {
+                            ctx.save();
+                            ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                            ctx.shadowBlur = 6;
+                            ctx.shadowOffsetX = 0;
+                            ctx.shadowOffsetY = 2;
+                        }
+
+                        // Coordenadas
+                        const r = point.options.radius || 0;
+                        const labelY = point.y - (r + 12);
+
+                        if (point.y > 0) {
+                            ctx.fillText(value + '%', point.x, labelY);
+                        }
+
+                        if (!isLight) ctx.restore(); // Restaura sombra
+
+                        ctx.restore();
                     }
-                });
+                }
             });
         }
     };
 
-    // Plugin 2: Melhor Mês (Badge + Sparkles)
+    // Plugin 2: Melhor Mês (Estabilizado)
     const bestMonthPlugin = {
         id: 'bestMonthPlugin',
         afterDraw: (chart) => {
-            const ctx = chart.ctx;
-            const meta = chart.getDatasetMeta(0);
             const container = chart.canvas.parentNode;
 
-            // Limpa elementos anteriores
-            const oldBadge = container.querySelector('.best-month-badge');
-            if (oldBadge) oldBadge.remove();
+            const meta = chart.getDatasetMeta(0);
+            // Relaxamos a verificação: se o dataset existe, tentamos desenhar
+            if (bestIdx === -1 || !meta.data[bestIdx]) {
+                const oldBadge = container.querySelector('.best-month-badge');
+                if (oldBadge) oldBadge.remove();
+                container.querySelectorAll('.sparkle').forEach(el => el.remove());
+                return;
+            }
 
-            // Remove sparkles antigos
-            container.querySelectorAll('.sparkle').forEach(el => el.remove());
+            const point = meta.data[bestIdx];
+            let badge = container.querySelector('.best-month-badge');
 
-            // Remove resquícios antigos
-            const oldShine = container.querySelector('.shine-effect');
-            if (oldShine) oldShine.remove();
-            const oldCrown = container.querySelector('.crown-icon');
-            if (oldCrown) oldCrown.remove();
+            // Cria apenas se não existir
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'best-month-badge';
+                badge.innerText = 'Melhor mês';
+                badge.style.background = 'linear-gradient(135deg, #B8860B, #8B6508)';
+                badge.style.border = '1px solid #D4AF37';
 
-            if (bestIdx !== -1) {
-                const barProps = meta.data[bestIdx];
-                if (barProps) {
-                    // A. Badge "Melhor mês"
-                    const badge = document.createElement('div');
-                    badge.className = 'best-month-badge';
-                    badge.innerText = 'Melhor mês';
+                badge.style.opacity = '0';
+                badge.style.animation = 'fadeIn 0.5s ease-out forwards';
+                container.appendChild(badge);
 
-                    // Ajuste de cor do badge
-                    badge.style.background = 'linear-gradient(135deg, #B8860B, #8B6508)';
-                    badge.style.border = '1px solid #D4AF37';
+                const sparkleOffsets = [{ x: -15, y: -15 }, { x: 15, y: -10 }, { x: 0, y: 20 }];
+                sparkleOffsets.forEach((off, idx) => {
+                    const sparkle = document.createElement('div');
+                    sparkle.className = 'sparkle';
+                    sparkle.dataset.idx = idx;
+                    sparkle.style.animationDelay = (idx * 0.3) + 's';
+                    container.appendChild(sparkle);
+                });
+            }
 
-                    // Posicionamento
-                    badge.style.left = barProps.x + 'px';
-                    badge.style.top = barProps.y + 'px';
-                    container.appendChild(badge);
+            // Atualiza posições sempre, garantindo que segue o ponto
+            badge.style.left = point.x + 'px';
+            badge.style.top = (point.y - 45) + 'px';
 
-                    // B. Sparkles (Pontos de brilho)
-                    const w = barProps.width;
-                    const h = barProps.base - barProps.y;
-
-                    // Cria 3 brilhos em posições aleatórias/fixas dentro da barra
-                    const sparklePositions = [
-                        { top: 0.2, left: -0.2 }, // Topo esquerdo
-                        { top: 0.5, left: 0.3 },  // Meio direita
-                        { top: 0.8, left: -0.1 }  // Base esquerda
-                    ];
-
-                    sparklePositions.forEach((pos, idx) => {
-                        const sparkle = document.createElement('div');
-                        sparkle.className = 'sparkle';
-
-                        // Calcula posição
-                        // barProps.x é o centro. w é largura total.
-                        // left: x - w/2 + (w * offset)
-                        const posX = barProps.x + (w * pos.left);
-                        const posY = barProps.y + (h * pos.top);
-
-                        sparkle.style.left = posX + 'px';
-                        sparkle.style.top = posY + 'px';
-
-                        // Randomize delay para não piscarem juntos
-                        sparkle.style.animationDelay = (idx * 0.5) + 's';
-
-                        container.appendChild(sparkle);
-                    });
-                }
+            const sparkleOffsets = [{ x: -15, y: -15 }, { x: 15, y: -10 }, { x: 0, y: 20 }];
+            const sparkles = container.querySelectorAll('.sparkle');
+            if (sparkles.length === 3) {
+                sparkles.forEach((s, i) => {
+                    s.style.left = (point.x + sparkleOffsets[i].x) + 'px';
+                    s.style.top = (point.y + sparkleOffsets[i].y) + 'px';
+                });
             }
         }
     };
 
+    // Plugin 3: Highlight do Mês no Eixo X
+    const activeMonthPlugin = {
+        id: 'activeMonthPlugin',
+        afterDraw(chart) {
+            const { ctx, scales: { x } } = chart;
+            const activeElements = chart.getActiveElements();
+
+            if (activeElements.length > 0) {
+                const idx = activeElements[0].index;
+                const xPos = x.getPixelForTick(idx);
+                const yPos = x.bottom - 15; // Ajuste vertical
+
+                ctx.save();
+
+                // CORREÇÃO 2: Se for o Melhor Mês, usa Dourado. Senão, Azul.
+                const isBest = idx === bestIdx;
+
+                ctx.fillStyle = isBest ? '#D4AF37' : '#3b82f6';
+                ctx.shadowColor = isBest ? 'rgba(212, 175, 55, 0.4)' : 'rgba(59, 130, 246, 0.4)';
+                ctx.shadowBlur = 8;
+
+                const text = months[idx];
+                ctx.font = 'bold 12px Inter';
+                const textWidth = ctx.measureText(text).width;
+                const padding = 8;
+                const width = textWidth + (padding * 2);
+                const height = 24;
+
+                // Rounded Rect (Centralizado verticalmente com o texto)
+                ctx.beginPath();
+                // Ajuste fino: yPos - height/2 centraliza matematicamente. Subtraímos 1px para ajuste ótico da fonte Inter.
+                ctx.roundRect(xPos - (width / 2), yPos - (height / 2) - 1, width, height, 12);
+                ctx.fill();
+
+                // Texto Branco por cima
+                ctx.fillStyle = '#ffffff';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowBlur = 0;
+                ctx.fillText(text, xPos, yPos);
+
+                ctx.restore();
+            }
+        }
+    };
+
+    // Novo Estilo Gráfico: Gráfico de Área Suave com Gradiente
+    const gradientFill = ctxTrend.createLinearGradient(0, 0, 0, 400);
+    gradientFill.addColorStop(0, 'rgba(59, 130, 246, 0.5)');
+    gradientFill.addColorStop(1, 'rgba(59, 130, 246, 0.05)');
+
+    // Hover Colors Array
+    const pointHoverBgColors = trendData.map((_, i) => i === bestIdx ? '#D4AF37' : '#2563eb');
+
     charts.trend = new Chart(ctxTrend, {
-        type: 'bar',
+        type: 'line',
         data: {
             labels: months,
             datasets: [{
                 label: '% Performance',
                 data: trendData,
-                backgroundColor: bgColors,
-                borderRadius: 4,
-                barPercentage: 0.6
+                borderColor: '#3b82f6',
+                backgroundColor: gradientFill,
+                borderWidth: 3,
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: pointBgColors,
+                pointBorderColor: '#ffffff',
+                pointBorderWidth: 2,
+                pointRadius: finalRadii,
+                // Efeito Hover "Pop" mais bonito
+                pointHoverRadius: 10,
+                pointHoverBackgroundColor: pointHoverBgColors, // Cor correta para cada tipo (Gold vs Blue)
+                pointHoverBorderColor: '#ffffff',
+                pointHoverBorderWidth: 4,
+                pointHitRadius: 30, // Facilita pegar o ponto com mouse
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                // Padding top maior para acomodar fontes extra grandes
+                padding: { top: 80, bottom: 10, left: 10, right: 20 }
+            },
+            animations: {
+                y: {
+                    easing: 'easeOutQuart',
+                    duration: 1000,
+                    delay: (ctx) => ctx.index * 150 + 300,
+                    from: (ctx) => {
+                        if (ctx.type === 'data' && ctx.mode === 'default' && !ctx.dropped) {
+                            ctx.dropped = true;
+                            return ctx.chart.scales.y.getPixelForValue(0);
+                        }
+                    }
+                },
+                radius: {
+                    duration: 400,
+                    easing: 'easeOutBack',
+                    delay: (ctx) => {
+                        // Se já exibiu, delay 0. Se não, delay sequencial.
+                        if (displayedPoints.has(ctx.index)) return 0;
+                        displayedPoints.add(ctx.index);
+                        return ctx.index * 150 + 800;
+                    },
+                    from: (ctx) => {
+                        // Se já exibiu, não reseta radius
+                        if (displayedPoints.has(ctx.index)) return undefined;
+                        return 0;
+                    }
+                }
+            },
+            interaction: {
+                mode: 'nearest',
+                intersect: true,
+                axis: 'x'
+            },
             plugins: {
                 legend: { display: false },
-                tooltip: { callbacks: { label: function (context) { return context.parsed.y + '% de Aproveitamento'; } } }
+                tooltip: { enabled: false } // Remove tooltip chato redundant
             },
             scales: {
-                y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text, stepSize: 25 } },
-                x: { grid: { display: false }, ticks: { color: colors.text, font: { size: 10 } } }
+                y: {
+                    beginAtZero: true,
+                    max: 105,
+                    grid: { color: colors.grid, borderDash: [5, 5] },
+                    ticks: { color: colors.text, stepSize: 20, padding: 20 }
+                },
+                x: {
+                    grid: { display: false },
+                    ticks: { color: colors.text, font: { size: 11 } }
+                }
             }
         },
-        plugins: [dataLabelPlugin, bestMonthPlugin]
+        plugins: [dataLabelPlugin, bestMonthPlugin, activeMonthPlugin]
     });
 }
 
 function renderStatusChart(data) {
     const ctxStatus = document.getElementById('chart-status').getContext('2d');
-    if (charts.status) charts.status.destroy();
 
     const colors = getChartColors();
-    let batido = 0, naoBatido = 0, naoContabilizado = 0;
 
-    data.forEach(item => {
-        if (statusChartMode === 'year') {
-            item.data.forEach(val => {
-                const st = getStatus(val, item.meta, item.logic, item.format);
-                if (st === 'good') batido++;
-                else if (st === 'bad') naoBatido++;
-                else naoContabilizado++;
-            });
-        } else {
-            if (!temDadosValidos(item)) {
-                naoContabilizado++;
-            } else {
-                const valid = item.data.filter(v =>
-                    v !== null && v !== undefined && (typeof v !== 'string' || (v.trim() !== "" && v.trim() !== "NaN"))
-                );
+    // --- helper: calcula contagens por modo (mesma lógica que você já usa) ---
+    const computeCounts = (dataset, mode) => {
+        let batido = 0, naoBatido = 0, naoContabilizado = 0;
 
-                if (valid.length > 0) {
-                    const status = getStatus(valid[valid.length - 1], item.meta, item.logic, item.format);
-                    if (status === 'good') batido++;
-                    else if (status === 'bad') naoBatido++;
+        dataset.forEach(item => {
+            if (mode === 'year') {
+                item.data.forEach(val => {
+                    const st = getStatus(val, item.meta, item.logic, item.format);
+                    if (st === 'good') batido++;
+                    else if (st === 'bad') naoBatido++;
                     else naoContabilizado++;
-                } else {
+                });
+            } else {
+                if (!temDadosValidos(item)) {
                     naoContabilizado++;
+                } else {
+                    const valid = item.data.filter(v =>
+                        v !== null && v !== undefined &&
+                        (typeof v !== 'string' || (v.trim() !== "" && v.trim() !== "NaN"))
+                    );
+
+                    if (valid.length > 0) {
+                        const status = getStatus(valid[valid.length - 1], item.meta, item.logic, item.format);
+                        if (status === 'good') batido++;
+                        else if (status === 'bad') naoBatido++;
+                        else naoContabilizado++;
+                    } else {
+                        naoContabilizado++;
+                    }
                 }
             }
-        }
-    });
+        });
+
+        return { batido, naoBatido, naoContabilizado };
+    };
 
     const centerTextPlugin = {
         id: 'centerText',
@@ -715,6 +848,7 @@ function renderStatusChart(data) {
             ctx.textBaseline = "middle";
             ctx.fillStyle = colors.title;
 
+            // texto central dinâmico
             const text = statusChartMode === 'year' ? "ANO" : "ATUAL";
             const textX = Math.round((width - ctx.measureText(text).width) / 2);
             const textY = height / 2;
@@ -749,23 +883,54 @@ function renderStatusChart(data) {
                     const value = data.datasets[0].data[index];
                     const percentage = Math.round((value / total) * 100) + '%';
 
-                    // Só desenha se tiver espaço suficiente (opcional, mas bom pra evitar clutter)
-                    if (value / total > 0.05) {
+                    if (total > 0 && (value / total) > 0.05) {
                         const { x, y } = element.tooltipPosition();
                         ctx.fillText(percentage, x, y);
                     }
                 }
             });
+
             ctx.restore();
         }
     };
 
+    // --- cria ou atualiza com animação suave ---
+    const counts = computeCounts(data, statusChartMode);
+    const nextData = [counts.batido, counts.naoBatido, counts.naoContabilizado];
+
+    // Se já existe, NÃO destrói: atualiza com animação
+    if (charts.status) {
+        charts.status.data.datasets[0].data = nextData;
+
+        // animação "morfando" ao trocar ANO/ATUAL
+        charts.status.options.animation = {
+            duration: 900,
+            easing: 'easeOutQuart',
+            animateRotate: true,
+            animateScale: true
+        };
+
+        // Atualiza a função de clique para garantir que use o contexto (ano) atual
+        charts.status.options.onClick = () => {
+            statusChartMode = statusChartMode === 'last' ? 'year' : 'last';
+            showToast(`Visão: ${statusChartMode === 'year' ? 'Acumulado do Ano' : 'Status Atual'}`, "wait");
+
+            const d = fullDB[currentYear] || [];
+            const f = currentSector === 'Todos' ? d : d.filter(i => i.sector === currentSector);
+            renderStatusChart(f);
+        };
+
+        charts.status.update();
+        return;
+    }
+
+    // Se não existe, cria normal
     charts.status = new Chart(ctxStatus, {
         type: 'doughnut',
         data: {
             labels: ['Batido', 'Não Batido', 'S/ Dados'],
             datasets: [{
-                data: [batido, naoBatido, naoContabilizado],
+                data: nextData,
                 backgroundColor: ['#10b981', '#ef4444', '#6b7280'],
                 borderWidth: 0,
                 hoverOffset: 4
@@ -775,30 +940,42 @@ function renderStatusChart(data) {
             responsive: true,
             maintainAspectRatio: false,
             cutout: '70%',
-            onClick: (e) => {
+            onClick: () => {
                 statusChartMode = statusChartMode === 'last' ? 'year' : 'last';
                 showToast(`Visão: ${statusChartMode === 'year' ? 'Acumulado do Ano' : 'Status Atual'}`, "wait");
-                renderStatusChart(data);
+
+                const d = fullDB[currentYear] || [];
+                const f = currentSector === 'Todos' ? d : d.filter(i => i.sector === currentSector);
+                renderStatusChart(f);
             },
             plugins: {
-                legend: { position: 'bottom', labels: { color: colors.text, font: { size: 11 }, usePointStyle: true, padding: 20 } },
+                legend: {
+                    position: 'bottom',
+                    labels: { color: colors.text, font: { size: 11 }, usePointStyle: true, padding: 20 }
+                },
                 tooltip: {
                     callbacks: {
                         label: function (context) {
-                            let label = context.label || '';
-                            let value = context.parsed;
-                            let total = batido + naoBatido + naoContabilizado;
-                            let perc = total > 0 ? Math.round((value / total) * 100) : 0;
+                            const label = context.label || '';
+                            const value = context.parsed;
+                            const arr = context.chart.data.datasets[0].data || [];
+                            const total = arr.reduce((a, b) => a + b, 0);
+                            const perc = total > 0 ? Math.round((value / total) * 100) : 0;
                             return `${label}: ${value} (${perc}%)`;
                         }
                     }
                 }
+            },
+            animation: {
+                duration: 1000,
+                easing: 'easeOutBack',
+                animateRotate: true,
+                animateScale: true
             }
         },
         plugins: [centerTextPlugin, sliceLabelPlugin]
     });
 }
-
 function renderPuncChart(data) {
     const ctxPunc = document.getElementById('chart-punc').getContext('2d');
     if (charts.punc) charts.punc.destroy();
@@ -819,6 +996,59 @@ function renderPuncChart(data) {
     gradientPunc.addColorStop(0, 'rgba(245, 158, 11, 0.2)');
     gradientPunc.addColorStop(1, 'rgba(245, 158, 11, 0.0)');
 
+    // --- CONTROLE DE ANIMAÇÃO ÚNICA (Anti-Flicker) ---
+    const displayedPoints = new Set();
+
+    // Plugin de Labels (Linhas + Valor)
+    const dataLabelPlugin = {
+        id: 'puncDataLabels',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            const meta = chart.getDatasetMeta(0);
+            const yScale = chart.scales.y;
+
+            meta.data.forEach((point, index) => {
+                if (point.x && point.y) {
+                    let value = Math.round(yScale.getValueForPixel(point.y));
+                    if (value < 0) value = 0;
+
+                    const finalValue = chart.data.datasets[0].data[index];
+
+                    if (finalValue >= 0) {
+                        ctx.save();
+
+                        const color = '#f59e0b'; // Laranja do tema Punc
+
+                        ctx.fillStyle = colors.text; // Texto na cor padrão
+
+                        // Fonte maior e bold com sombra
+                        ctx.font = 'bold 15px Inter';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+
+                        // Sombra
+                        ctx.save();
+                        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                        ctx.shadowBlur = 6;
+                        ctx.shadowOffsetX = 0;
+                        ctx.shadowOffsetY = 2;
+
+                        // Coordenadas
+                        const r = point.options.radius || 0;
+                        const labelY = point.y - (r + 12);
+
+                        if (point.y > 0) {
+                            ctx.fillText(value + '%', point.x, labelY);
+                        }
+                        ctx.restore();
+
+                        ctx.restore();
+                    }
+                }
+            });
+        }
+    };
+
     charts.punc = new Chart(ctxPunc, {
         type: 'line',
         data: {
@@ -832,6 +1062,7 @@ function renderPuncChart(data) {
                 pointBackgroundColor: colors.bg,
                 pointBorderColor: '#f59e0b',
                 pointRadius: 4,
+                pointHoverRadius: 6,
                 fill: true,
                 tension: 0.4
             }]
@@ -839,12 +1070,42 @@ function renderPuncChart(data) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
+            layout: {
+                padding: { top: 70, bottom: 10, left: 10, right: 20 }
+            },
             plugins: { legend: { display: false } },
             scales: {
-                y: { beginAtZero: true, max: 100, grid: { color: colors.grid }, ticks: { color: colors.text } },
+                y: { beginAtZero: true, max: 105, grid: { color: colors.grid }, ticks: { color: colors.text, padding: 20 } },
                 x: { grid: { display: false }, ticks: { color: colors.text, font: { size: 10 } } }
+            },
+            animations: {
+                y: {
+                    easing: 'easeOutQuart',
+                    duration: 1000,
+                    delay: (ctx) => ctx.index * 150,
+                    from: (ctx) => {
+                        if (ctx.type === 'data' && ctx.mode === 'default' && !ctx.dropped) {
+                            ctx.dropped = true;
+                            return ctx.chart.scales.y.getPixelForValue(0);
+                        }
+                    }
+                },
+                radius: {
+                    duration: 400,
+                    easing: 'easeOutBack',
+                    delay: (ctx) => {
+                        if (displayedPoints.has(ctx.index)) return 0;
+                        displayedPoints.add(ctx.index);
+                        return ctx.index * 150 + 500;
+                    },
+                    from: (ctx) => {
+                        if (displayedPoints.has(ctx.index)) return undefined;
+                        return 0;
+                    }
+                }
             }
-        }
+        },
+        plugins: [dataLabelPlugin]
     });
 }
 
@@ -1329,7 +1590,7 @@ function renderDetailChart(item) {
             responsive: true,
             maintainAspectRatio: false,
             layout: {
-                padding: { left: 0, right: 0, top: 10, bottom: 0 }
+                padding: { left: 0, right: 20, top: 10, bottom: 0 }
             },
             plugins: { legend: { display: false } },
             // Permite clicar no mês do gráfico para abrir a análise

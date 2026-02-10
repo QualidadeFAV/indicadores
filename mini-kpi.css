@@ -1,0 +1,45 @@
+/* CSS para o novo layout de KPIs no Header do Gráfico */
+.chart-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.chart-header-row h3 {
+    margin: 0;
+    /* Remove a margem original do h3 */
+}
+
+.mini-kpi-group {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.mini-kpi {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    /* Alinha à direita para ficar bonito no canto */
+    line-height: 1.2;
+}
+
+.mk-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.mk-val {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.mini-kpi.danger .mk-val {
+    color: var(--bad);
+}
