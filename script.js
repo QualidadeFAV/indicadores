@@ -2,8 +2,21 @@
  * Features: Instant Grid + Fluid Data Animation + Single Row DB + Silent Auto Draft + Cloud Delete
  */
 
-const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec";
+const API_TOKEN = '110423';
+const API_URL = "https://script.google.com/macros/s/AKfycbw_bHMpDh_8hUZvr0LbWA-IGfPrMmfEbkKN0he_n1FSkRdZRXOfFiGdNv_5G8rOq-bs/exec?token=" + API_TOKEN;
 const DRAFT_KEY = 'fav_analysis_draft';
+
+// CONSTANTES DE COR (Chart.js)
+const COL_ACCENT = '#3b82f6';
+const COL_BAD = '#ef4444';
+const COL_GOOD = '#10b981';
+const COL_WARN = '#f59e0b';
+const COL_GOLD = '#D4AF37';
+const COL_BG_DARK = '#18181b';
+const COL_BG_LIGHT = '#ffffff';
+const COL_GOLD_DARK = '#B8860B';
+const COL_GOLD_DARKER = '#8B6508';
+const COL_ACCENT_HOVER = '#2563eb';
 
 // Inicializa ícones
 lucide.createIcons();
@@ -21,6 +34,8 @@ let chartInstance = null;
 let currentMetricId = null;
 let isNewSectorMode = false;
 let statusChartMode = 'last';
+let hiddenSectors = JSON.parse(localStorage.getItem('fav_hidden_sectors')) || [];
+let analyticsPeriod = { start: 0, end: 11 };
 
 // Variável para armazenar as análises (Sincronizado com BD_ANALISES)
 let analysisDB = {};
@@ -106,6 +121,17 @@ async function loadData() {
             analysisDB = {};
         }
 
+        // --- CARREGAR NPS DA NUVEM ---
+        if (data["nps"] && Object.keys(data["nps"]).length > 0) {
+            npsData = migrateNPSDataIfNeeded(data["nps"]); // NPS UPDATE: Adicionada migração
+            localStorage.setItem('fav_nps_data', JSON.stringify(npsData)); // Sincroniza cache
+        } else {
+            // Se não veio nada da nuvem, tenta usar o cache local antigo ou inicia vazio
+            const cached = localStorage.getItem('fav_nps_data');
+            if (cached) npsData = migrateNPSDataIfNeeded(JSON.parse(cached)); // NPS UPDATE: Adicionada migração
+            else npsData = {};
+        }
+
         renderApp();
     } catch (e) {
         console.error(e);
@@ -118,6 +144,7 @@ async function loadData() {
 // --- SALVAMENTO GERAL (APENAS NÚMEROS) ---
 async function saveData() {
     const payload = {
+        token: API_TOKEN,
         "2025": fullDB["2025"],
         "2026": fullDB["2026"]
     };
@@ -134,6 +161,7 @@ async function saveAnalysisToCloud(id, year, monthIdx, dataObj) {
     const itemName = item ? item.name : "Indicador";
 
     const payload = {
+        token: API_TOKEN,
         type: "save_analysis",
         data: {
             id: id,
@@ -155,6 +183,7 @@ async function saveAnalysisToCloud(id, year, monthIdx, dataObj) {
 // --- EXCLUSÃO ESPECÍFICA DE ANÁLISE ---
 async function deleteAnalysisFromCloud(id, year, monthIdx) {
     const payload = {
+        token: API_TOKEN,
         type: "delete_analysis",
         data: {
             id: id,
@@ -202,7 +231,12 @@ function applyTheme(theme, animate = false) {
 function renderApp(filter = currentSector) {
     populateSectorFilter();
     const data = fullDB[currentYear] || [];
-    const filtered = filter === 'Todos' ? data : data.filter(i => i.sector === filter);
+    // PREPARE DATA: exclude hidden sectors from calculations
+    const displayData = filter === 'Todos' ? data : data.filter(i => i.sector === filter);
+    // If viewing 'Todos', exclude hidden. If viewing specific, show all (dashboard shows specific data).
+    const activeData = (filter === 'Todos')
+        ? displayData.filter(i => !hiddenSectors.includes(i.sector))
+        : displayData;
 
     const perfLabel = document.getElementById('kpi-perf-label');
     if (perfLabel) {
@@ -215,12 +249,32 @@ function renderApp(filter = currentSector) {
         }
     }
 
-    updateKPIs(filtered);
+    // Initialize Analytics Filter if empty (only once)
+    const anStart = document.getElementById('an-start');
+    if (anStart && anStart.options.length === 0) populateAnalyticsFilter();
+
+    // Toggle Period Filter Visibility
+    const periodFilter = document.getElementById('period-filter-wrapper');
+    if (periodFilter) {
+        // periodFilter.style.display = (currentView === 'manager') ? 'none' : 'flex'; // REMOVED
+        if (currentView === 'manager') {
+            periodFilter.classList.add('filter-disabled');
+        } else {
+            periodFilter.classList.remove('filter-disabled');
+            periodFilter.style.display = 'flex';
+        }
+    }
 
     if (currentView === 'table') {
-        renderTable(filtered);
+        const start = analyticsPeriod.start;
+        const end = analyticsPeriod.end;
+        updateKPIs(activeData, start, end); // KPIs respect filter in table view too
+        renderTable(displayData);
+        updateTableVisibility(start, end);
     } else {
-        renderExecutiveCharts(filtered);
+        // Analytics View: Respect the period filter
+        updateKPIs(activeData, analyticsPeriod.start, analyticsPeriod.end);
+        renderExecutiveCharts(activeData);
     }
 
     // Toggle do botão Adicionar (FAB) - Visível apenas na tabela
@@ -252,7 +306,15 @@ function checkOnTime(dateStr, monthIdx) {
 }
 
 function getStatus(val, meta, logic, fmt) {
-    if (val === null || val === "" || val === "NaN") return "empty";
+    if (val === null || val === undefined) return "empty";
+    const sVal = String(val).trim();
+    if (sVal === "" || sVal === "NaN" || sVal === "null" || sVal === "undefined" || sVal === "-") return "empty";
+
+    // NO META (Empty) = INDEFINITELY GOOD ("Within Meta")
+    if (meta === null || meta === undefined || String(meta).trim() === "") {
+        return "good";
+    }
+
     let v, m;
 
     if (fmt === 'time') {
@@ -301,11 +363,11 @@ function formatVal(v, f) {
 
     if (isNaN(num)) return "-";
 
-    const br = num.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    const br = num.toLocaleString('pt-BR', { maximumFractionDigits: 6 });
 
     switch (f) {
         case 'money': return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-        case 'percent': return num.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+        case 'percent': return num.toLocaleString('pt-BR', { maximumFractionDigits: 4 }) + '%';
         case 'minutes': return br + ' min';
         case 'days': return br + ' dias';
         case 'years': return br + ' anos';
@@ -329,13 +391,15 @@ function timeToDec(t) {
     return NaN;
 }
 
-function updateKPIs(data) {
+function updateKPIs(data, startIdx = 0, endIdx = 11) {
     let totalPerf = 0, hitsPerf = 0;
     let countCrit = 0;
     let puncTotal = 0, puncHits = 0;
 
     data.forEach(item => {
-        item.data.forEach(val => {
+        // Calculate only within range
+        for (let i = startIdx; i <= endIdx; i++) {
+            const val = item.data[i];
             if (val !== null && val !== "") {
                 const st = getStatus(val, item.meta, item.logic, item.format);
                 if (st !== 'empty') {
@@ -344,23 +408,22 @@ function updateKPIs(data) {
                     if (st === 'bad') countCrit++;
                 }
             }
-        });
 
-        if (item.dates) {
-            item.dates.forEach((d, i) => {
-                if (item.data[i] !== null && item.data[i] !== "") {
+            if (item.dates && item.dates[i]) {
+                const dVal = item.data[i]; // Needs data to be considered for punctuality? Usually yes.
+                if (dVal !== null && dVal !== "") {
                     puncTotal++;
-                    if (checkOnTime(d, i)) puncHits++;
+                    if (checkOnTime(item.dates[i], i)) puncHits++;
                 }
-            });
+            }
         }
     });
 
-    const perf = totalPerf ? Math.round((hitsPerf / totalPerf) * 100) : 0;
-    const punc = puncTotal ? Math.round((puncHits / puncTotal) * 100) : 0;
+    const perf = totalPerf ? parseFloat(((hitsPerf / totalPerf) * 100).toFixed(2)) : 0;
+    const punc = puncTotal ? parseFloat(((puncHits / puncTotal) * 100).toFixed(2)) : 0;
 
-    setText('kpi-perf', perf + "%");
-    setText('kpi-punc', punc + "%");
+    setText('kpi-perf', perf.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + "%");
+    setText('kpi-punc', punc.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + "%");
     setText('kpi-crit', countCrit);
 }
 
@@ -389,7 +452,16 @@ function renderTable(data) {
         if (items.length === 0) return;
 
         if (currentSector === 'Todos') {
-            tbody.innerHTML += `<tr class="sector-header cascade-item" style="animation-delay: ${delayCounter * 30}ms"><td colspan="14">${sec}</td></tr>`;
+            const isHidden = hiddenSectors.includes(sec);
+            if (isHidden) return; // STRICTLY HIDDEN (No header, no rows)
+
+            tbody.innerHTML += `
+                <tr class="sector-header cascade-item" style="animation-delay: ${delayCounter * 30}ms">
+                    <td colspan="14">
+                         <div style="font-weight:700; letter-spacing:0.5px;">${sec}</div>
+                    </td>
+                </tr>
+            `;
             delayCounter++;
         }
 
@@ -457,10 +529,10 @@ function getChartColors() {
     const isDark = currentTheme === 'dark';
     return {
         // Light Mode: Escureci para Zinc-900 (#18181b) para contraste máximo
-        text: isDark ? '#a1a1aa' : '#18181b',
+        text: isDark ? '#a1a1aa' : COL_BG_DARK,
         grid: isDark ? '#27272a' : '#d4d4d8',
-        bg: isDark ? '#18181b' : '#ffffff',
-        title: isDark ? '#ffffff' : '#18181b'
+        bg: isDark ? COL_BG_DARK : COL_BG_LIGHT,
+        title: isDark ? COL_BG_LIGHT : COL_BG_DARK
     };
 }
 
@@ -471,13 +543,24 @@ function renderTrendChart(data) {
     const colors = getChartColors();
     const isLight = currentTheme === 'light';
 
+    // Validate Range
+    const start = analyticsPeriod.start;
+    const end = analyticsPeriod.end;
+    const rangeLength = end - start + 1;
+    const activeMonths = months.slice(start, end + 1);
+
     // --- CÁLCULO DOS DADOS (Constância de Metas) ---
-    const mAvg = Array(12).fill(0);
-    const mCount = Array(12).fill(0);
-    const mTieBreaker = Array(12).fill(0);
+    // Arrays sized to the range
+    const mAvg = Array(rangeLength).fill(0);
+    const mCount = Array(rangeLength).fill(0);
+    const mTieBreaker = Array(rangeLength).fill(0);
 
     data.forEach(item => {
-        item.data.forEach((val, i) => {
+        // Iterate only the selected range
+        for (let i = 0; i < rangeLength; i++) {
+            const MonthIdx = start + i; // Real Index
+            const val = item.data[MonthIdx];
+
             if (val !== null && val !== "") {
                 const st = getStatus(val, item.meta, item.logic, item.format);
 
@@ -499,13 +582,14 @@ function renderTrendChart(data) {
                     let relativePerformance = 0;
                     if (item.logic === 'maior') relativePerformance = (numVal - target) / target;
                     else relativePerformance = (target - numVal) / target;
+                    // Use 'i' (relative index)
                     mTieBreaker[i] += relativePerformance;
                 }
             }
-        });
+        }
     });
 
-    const trendData = mAvg.map((s, i) => mCount[i] ? Math.round(s / mCount[i]) : 0);
+    const trendData = mAvg.map((s, i) => mCount[i] ? parseFloat((s / mCount[i]).toFixed(2)) : 0);
 
     // --- MELHOR MÊS ---
     let maxVal = -Infinity;
@@ -528,7 +612,7 @@ function renderTrendChart(data) {
     }
 
     // --- VISUAL (LINHA RETA + ANIMAÇÃO NATURAL) ---
-    const pointBgColors = trendData.map((_, i) => i === bestIdx ? '#D4AF37' : '#3b82f6');
+    const pointBgColors = trendData.map((_, i) => i === bestIdx ? COL_GOLD : COL_ACCENT);
     const finalRadii = trendData.map((_, i) => i === bestIdx ? 8 : 4);
     const pointHoverRadii = trendData.map((_, i) => i === bestIdx ? 10 : 7);
 
@@ -545,17 +629,19 @@ function renderTrendChart(data) {
 
             meta.data.forEach((point, index) => {
                 if (point.x && point.y) {
-                    let value = Math.round(yScale.getValueForPixel(point.y));
-                    if (value < 0) value = 0;
+                    // Restore Animation: Calculate value from current Y position
+                    let currentVal = yScale.getValueForPixel(point.y);
+                    if (currentVal < 0) currentVal = 0;
 
                     const finalValue = chart.data.datasets[0].data[index];
 
+                    // Determine if we should show (using finalValue for logic)
                     if (finalValue > 0) {
                         ctx.save();
 
                         const isBest = index === bestIdx;
                         // No Light Mode, se não for gold, usa preto puro para contraste
-                        const color = isBest ? '#D4AF37' : (isLight ? '#000000' : colors.text);
+                        const color = isBest ? COL_GOLD : (isLight ? '#000000' : colors.text);
 
                         ctx.fillStyle = color;
                         // ctx.strokeStyle = color; // Linha removida
@@ -563,12 +649,9 @@ function renderTrendChart(data) {
                         // Fontes Extra Grandes e com Sombra para destaque total
                         ctx.font = isBest ? '900 22px Inter' : 'bold 15px Inter';
 
-                        // CORREÇÃO: Alinha à direita se for o último mês (Dezembro/índice 11) para não cortar
-                        // Para os demais, mantém centralizado.
-                        if (index === 11) {
+                        // CORREÇÃO: Alinha à direita se for o último mês VISÍVEL
+                        if (index === (activeMonths.length - 1)) {
                             ctx.textAlign = 'right';
-                            // Pequeno ajuste fino para desgrudar do ponto se necessário, 
-                            // mas 'right' já joga o texto para a esquerda do x.
                         } else {
                             ctx.textAlign = 'center';
                         }
@@ -589,7 +672,9 @@ function renderTrendChart(data) {
                         const labelY = point.y - (r + 12);
 
                         if (point.y > 0) {
-                            ctx.fillText(value + '%', point.x, labelY);
+                            // Format current animated value
+                            const txt = currentVal.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+                            ctx.fillText(txt, point.x, labelY);
                         }
 
                         if (!isLight) ctx.restore(); // Restaura sombra
@@ -673,7 +758,7 @@ function renderTrendChart(data) {
                 // CORREÇÃO 2: Se for o Melhor Mês, usa Dourado. Senão, Azul.
                 const isBest = idx === bestIdx;
 
-                ctx.fillStyle = isBest ? '#D4AF37' : '#3b82f6';
+                ctx.fillStyle = isBest ? COL_GOLD : COL_ACCENT;
                 ctx.shadowColor = isBest ? 'rgba(212, 175, 55, 0.4)' : 'rgba(59, 130, 246, 0.4)';
                 ctx.shadowBlur = 8;
 
@@ -691,7 +776,7 @@ function renderTrendChart(data) {
                 ctx.fill();
 
                 // Texto Branco por cima
-                ctx.fillStyle = '#ffffff';
+                ctx.fillStyle = COL_BG_LIGHT;
                 ctx.textAlign = 'center';
                 ctx.textBaseline = 'middle';
                 ctx.shadowBlur = 0;
@@ -708,28 +793,28 @@ function renderTrendChart(data) {
     gradientFill.addColorStop(1, 'rgba(59, 130, 246, 0.05)');
 
     // Hover Colors Array
-    const pointHoverBgColors = trendData.map((_, i) => i === bestIdx ? '#D4AF37' : '#2563eb');
+    const pointHoverBgColors = trendData.map((_, i) => i === bestIdx ? COL_GOLD : COL_ACCENT_HOVER);
 
     charts.trend = new Chart(ctxTrend, {
         type: 'line',
         data: {
-            labels: months,
+            labels: activeMonths,
             datasets: [{
                 label: '% Performance',
                 data: trendData,
-                borderColor: '#3b82f6',
+                borderColor: COL_ACCENT,
                 backgroundColor: gradientFill,
                 borderWidth: 3,
                 fill: true,
                 tension: 0.4,
                 pointBackgroundColor: pointBgColors,
-                pointBorderColor: '#ffffff',
+                pointBorderColor: COL_BG_LIGHT,
                 pointBorderWidth: 2,
                 pointRadius: finalRadii,
                 // Efeito Hover "Pop" mais bonito
                 pointHoverRadius: 10,
                 pointHoverBackgroundColor: pointHoverBgColors, // Cor correta para cada tipo (Gold vs Blue)
-                pointHoverBorderColor: '#ffffff',
+                pointHoverBorderColor: COL_BG_LIGHT,
                 pointHoverBorderWidth: 4,
                 pointHitRadius: 30, // Facilita pegar o ponto com mouse
             }]
@@ -806,30 +891,34 @@ function renderStatusChart(data) {
 
         dataset.forEach(item => {
             if (mode === 'year') {
-                item.data.forEach(val => {
+                // Range-aware 'year' mode
+                for (let i = analyticsPeriod.start; i <= analyticsPeriod.end; i++) {
+                    const val = item.data[i];
                     const st = getStatus(val, item.meta, item.logic, item.format);
                     if (st === 'good') batido++;
                     else if (st === 'bad') naoBatido++;
                     else naoContabilizado++;
-                });
+                }
             } else {
-                if (!temDadosValidos(item)) {
-                    naoContabilizado++;
-                } else {
-                    const valid = item.data.filter(v =>
-                        v !== null && v !== undefined &&
-                        (typeof v !== 'string' || (v.trim() !== "" && v.trim() !== "NaN"))
-                    );
-
-                    if (valid.length > 0) {
-                        const status = getStatus(valid[valid.length - 1], item.meta, item.logic, item.format);
-                        if (status === 'good') batido++;
-                        else if (status === 'bad') naoBatido++;
-                        else naoContabilizado++;
-                    } else {
-                        naoContabilizado++;
+                // 'last' mode: Find the last valid data point WITHIN the selected range
+                // Iterate backwards from end to start
+                let found = false;
+                for (let i = analyticsPeriod.end; i >= analyticsPeriod.start; i--) {
+                    const val = item.data[i];
+                    if (val !== null && val !== undefined) {
+                        const sVal = String(val).trim();
+                        if (sVal !== "" && sVal !== "NaN" && sVal !== "null" && sVal !== "undefined" && sVal !== "-") {
+                            // Found valid data
+                            const status = getStatus(val, item.meta, item.logic, item.format);
+                            if (status === 'good') batido++;
+                            else if (status === 'bad') naoBatido++;
+                            else naoContabilizado++;
+                            found = true;
+                            break;
+                        }
                     }
                 }
+                if (!found) naoContabilizado++;
             }
         });
 
@@ -873,7 +962,7 @@ function renderStatusChart(data) {
             ctx.font = 'bold 11px Inter';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillStyle = '#ffffff';
+            ctx.fillStyle = COL_BG_LIGHT;
 
             const meta = chart.getDatasetMeta(0);
             const total = data.datasets[0].data.reduce((a, b) => a + b, 0);
@@ -881,9 +970,10 @@ function renderStatusChart(data) {
             meta.data.forEach((element, index) => {
                 if (!element.hidden && data.datasets[0].data[index] > 0) {
                     const value = data.datasets[0].data[index];
-                    const percentage = Math.round((value / total) * 100) + '%';
+                    const percentage = value.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+                    const numericPerc = (value / total);
 
-                    if (total > 0 && (value / total) > 0.05) {
+                    if (total > 0 && numericPerc > 0.05) {
                         const { x, y } = element.tooltipPosition();
                         ctx.fillText(percentage, x, y);
                     }
@@ -981,15 +1071,22 @@ function renderPuncChart(data) {
     if (charts.punc) charts.punc.destroy();
 
     const colors = getChartColors();
-    const pData = Array(12).fill(0).map((_, i) => {
+    const start = analyticsPeriod.start;
+    const end = analyticsPeriod.end;
+    const rangeLength = end - start + 1;
+    const activeMonths = months.slice(start, end + 1);
+
+    const pData = Array(rangeLength).fill(0).map((_, i) => {
         let ok = 0, tot = 0;
+        const monthIdx = start + i;
+
         data.forEach(item => {
-            if (item.dates && item.dates[i] && item.data[i] !== null) {
+            if (item.dates && item.dates[monthIdx] && item.data[monthIdx] !== null) {
                 tot++;
-                if (checkOnTime(item.dates[i], i)) ok++;
+                if (checkOnTime(item.dates[monthIdx], monthIdx)) ok++;
             }
         });
-        return tot ? Math.round((ok / tot) * 100) : 0;
+        return tot ? parseFloat(((ok / tot) * 100).toFixed(2)) : 0;
     });
 
     const gradientPunc = ctxPunc.createLinearGradient(0, 0, 0, 300);
@@ -1009,8 +1106,9 @@ function renderPuncChart(data) {
 
             meta.data.forEach((point, index) => {
                 if (point.x && point.y) {
-                    let value = Math.round(yScale.getValueForPixel(point.y));
-                    if (value < 0) value = 0;
+                    // Restore Animation
+                    let currentVal = yScale.getValueForPixel(point.y);
+                    if (currentVal < 0) currentVal = 0;
 
                     const finalValue = chart.data.datasets[0].data[index];
 
@@ -1038,7 +1136,8 @@ function renderPuncChart(data) {
                         const labelY = point.y - (r + 12);
 
                         if (point.y > 0) {
-                            ctx.fillText(value + '%', point.x, labelY);
+                            const txt = currentVal.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) + '%';
+                            ctx.fillText(txt, point.x, labelY);
                         }
                         ctx.restore();
 
@@ -1052,7 +1151,7 @@ function renderPuncChart(data) {
     charts.punc = new Chart(ctxPunc, {
         type: 'line',
         data: {
-            labels: months,
+            labels: activeMonths,
             datasets: [{
                 label: 'Pontualidade',
                 data: pData,
@@ -1450,13 +1549,13 @@ function generateExport(type) {
             const element = document.getElementById('charts-area');
             const options = {
                 scale: 2, useCORS: true,
-                backgroundColor: currentTheme === 'light' ? '#ffffff' : '#09090b',
+                backgroundColor: currentTheme === 'light' ? COL_BG_LIGHT : '#09090b',
                 logging: false,
                 onclone: function (clonedDoc) {
                     const clonedChartsArea = clonedDoc.getElementById('charts-area');
                     if (clonedChartsArea) {
-                        const bg = currentTheme === 'light' ? '#ffffff' : '#09090b';
-                        const cardBg = currentTheme === 'light' ? '#ffffff' : '#18181b';
+                        const bg = currentTheme === 'light' ? COL_BG_LIGHT : '#09090b';
+                        const cardBg = currentTheme === 'light' ? COL_BG_LIGHT : COL_BG_DARK;
                         const border = currentTheme === 'light' ? '#d4d4d8' : '#3f3f46';
 
                         clonedChartsArea.style.padding = '20px';
@@ -1560,7 +1659,7 @@ function renderDetailChart(item) {
             datasets: [{
                 label: 'Real',
                 data: cData,
-                borderColor: '#3b82f6',
+                borderColor: COL_ACCENT,
                 backgroundColor: gradient,
                 borderWidth: 3,
                 tension: 0.3,
@@ -1576,7 +1675,7 @@ function renderDetailChart(item) {
                         }
                     }
                 },
-                pointBorderColor: '#3b82f6'
+                pointBorderColor: COL_ACCENT
             }, {
                 label: 'Meta',
                 data: Array(12).fill(cMeta),
@@ -1666,10 +1765,74 @@ function toggleNewSector() {
     }
 }
 
+function openSectorManager() {
+    currentMetricId = null;
+    setText('modalTitle', 'Visibilidade de Setores');
+
+    document.getElementById('mode-view').style.display = 'none';
+    document.getElementById('footer-view').style.display = 'none';
+    document.getElementById('mode-edit').style.display = 'none';
+    document.getElementById('footer-edit').style.display = 'none';
+
+    const container = document.getElementById('mode-sectors');
+    container.style.display = 'grid'; // grid for layout
+    container.style.gridTemplateColumns = '1fr 1fr';
+    container.style.gap = '10px';
+    container.style.padding = '10px';
+    container.style.maxHeight = '60vh'; // Limit height
+    container.style.overflowY = 'auto'; // Enable scrolling
+    document.getElementById('footer-sectors').style.display = 'flex';
+
+    const allSectors = [...new Set(fullDB[currentYear].map(i => i.sector))].sort();
+
+    let html = '';
+    allSectors.forEach(s => {
+        const isHidden = hiddenSectors.includes(s);
+        const icon = isHidden ? 'square' : 'check-square';
+        const color = isHidden ? 'var(--text-muted)' : 'var(--accent)';
+        const opacity = isHidden ? '0.6' : '1';
+
+        html += `
+            <div onclick="toggleSectorHIDDEN('${s}')" 
+                 style="background:var(--bg-elevated); padding:12px; border-radius:8px; cursor:pointer; display:flex; align-items:center; gap:10px; border:1px solid var(--border); user-select:none;">
+                <i data-lucide="${icon}" style="color:${color}"></i>
+                <span style="font-weight:600; opacity:${opacity}">${s}</span>
+            </div>
+        `;
+    });
+
+    container.innerHTML = html;
+    document.getElementById('mainModal').classList.add('open');
+    lucide.createIcons();
+}
+
+function toggleSectorHIDDEN(sec) {
+    if (hiddenSectors.includes(sec)) {
+        hiddenSectors = hiddenSectors.filter(s => s !== sec);
+    } else {
+        hiddenSectors.push(sec);
+    }
+    localStorage.setItem('fav_hidden_sectors', JSON.stringify(hiddenSectors));
+    openSectorManager(); // Re-render modal to refresh icons
+}
+
 function switchToEditMode() { document.getElementById('mode-view').style.display = 'none'; document.getElementById('footer-view').style.display = 'none'; document.getElementById('mode-edit').style.display = 'block'; document.getElementById('footer-edit').style.display = 'flex'; if (currentMetricId) setText('modalTitle', 'Editar Indicador'); }
-function switchToViewMode() { document.getElementById('mode-view').style.display = 'block'; document.getElementById('footer-view').style.display = 'flex'; document.getElementById('mode-edit').style.display = 'none'; document.getElementById('footer-edit').style.display = 'none'; if (currentMetricId) setText('modalTitle', fullDB[currentYear].find(i => i.id == currentMetricId).name); }
-function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function switchToViewMode() {
+    document.getElementById('mode-view').style.display = 'block';
+    document.getElementById('footer-view').style.display = 'flex';
+    document.getElementById('mode-edit').style.display = 'none';
+    document.getElementById('footer-edit').style.display = 'none';
+    document.getElementById('mode-sectors').style.display = 'none';
+    document.getElementById('footer-sectors').style.display = 'none';
+    if (currentMetricId) setText('modalTitle', fullDB[currentYear].find(i => i.id == currentMetricId).name);
+}
+function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+    // Reset modal state to view mode when closing, to avoid stucking in sector mode
+    if (id === 'mainModal') switchToViewMode();
+}
 function setSector(val) { currentSector = val; renderApp(); }
+// Removed previous toggleSectorVisibility as logic moved to hidden modal
 function setYear(y) {
     currentYear = y;
 
@@ -1678,31 +1841,101 @@ function setYear(y) {
     const btn = document.getElementById('btn-' + y);
     if (btn) btn.classList.add('active');
 
+    populateAnalyticsFilter(); // Refresh if year changes (unlikely to change month names, but safe)
     if (currentView === 'manager') renderManagerialView();
     else renderApp();
+
+    // If NPS pane is currently visible, refresh its chart to reflect the new year
+    try {
+        if (currentView === 'exec' && npsVisible) renderNPSChart();
+    } catch (e) { }
+}
+
+function populateAnalyticsFilter() {
+    const s = document.getElementById('an-start');
+    const e = document.getElementById('an-end');
+    if (!s || !e) return;
+
+    s.innerHTML = months.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+    e.innerHTML = months.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+
+    s.value = analyticsPeriod.start;
+    e.value = analyticsPeriod.end;
+}
+
+function setAnalyticsPeriod() {
+    const s = parseInt(document.getElementById('an-start').value);
+    const e = parseInt(document.getElementById('an-end').value);
+
+    if (s > e) {
+        // Auto-correct: if start > end, set end = start
+        document.getElementById('an-end').value = s;
+        analyticsPeriod.start = s;
+        analyticsPeriod.end = s;
+    } else {
+        analyticsPeriod.start = s;
+        analyticsPeriod.end = e;
+    }
+    renderApp();
+    if (npsVisible) {
+        const pDisp = document.getElementById('nps-period-display');
+        if (pDisp) {
+            const mStart = months[analyticsPeriod.start];
+            const mEnd = months[analyticsPeriod.end];
+            pDisp.innerText = `Período: ${mStart} a ${mEnd} de ${currentYear}`;
+        }
+        try { renderNPSChart(); } catch (e) { console.error(e); }
+    }
 }
 // --- SWITCH VIEW (CONTROLE GERAL) ---
 function switchView(v) {
     currentView = v;
-    document.getElementById('view-table').style.display = v === 'table' ? 'block' : 'none';
-    document.getElementById('view-exec').style.display = v === 'exec' ? 'block' : 'none';
-    document.getElementById('view-manager').style.display = v === 'manager' ? 'block' : 'none';
 
-    // Toggle KPI Bar (Redundante na visão gerencial)
+    const viewTable = document.getElementById('view-table');
+    const viewExec = document.getElementById('view-exec');
+    const viewManager = document.getElementById('view-manager');
+
+    if (viewTable) viewTable.style.display = v === 'table' ? 'block' : 'none';
+    if (viewExec) viewExec.style.display = v === 'exec' ? 'block' : 'none';
+    if (viewManager) viewManager.style.display = v === 'manager' ? 'block' : 'none';
+
+    // Toggle KPI Bar (Redundant in Manager View)
     const kpiBar = document.querySelector('.kpi-bar');
     if (kpiBar) kpiBar.style.display = v === 'manager' ? 'none' : 'flex';
+
+    // Reset NPS View State
+    npsVisible = false;
+    const npsArea = document.getElementById('nps-area');
+    const chartsArea = document.getElementById('charts-area');
+    const npsBtn = document.getElementById('btn-nps-toggle');
+
+    if (npsArea && chartsArea) {
+        npsArea.style.display = 'none';
+        chartsArea.style.display = 'grid';
+    }
+
+    // Manage NPS Button Visibility
+    if (npsBtn) {
+        npsBtn.style.display = (v === 'exec') ? 'flex' : 'none';
+        npsBtn.classList.remove('active');
+    }
 
     // Toggle Filters
     const sectorFilter = document.getElementById('sector-filter');
     const yearSelector = document.querySelector('.year-selector');
+    const periodFilterWrapper = document.getElementById('period-filter-wrapper');
 
     if (v === 'manager') {
-        if (sectorFilter) { sectorFilter.disabled = true; sectorFilter.style.opacity = '0.5'; }
-        // Enable Year Selector for Manager View
+        if (sectorFilter) { sectorFilter.disabled = true; sectorFilter.classList.add('filter-disabled'); }
         if (yearSelector) { yearSelector.style.pointerEvents = 'all'; yearSelector.style.opacity = '1'; }
+        if (periodFilterWrapper) periodFilterWrapper.classList.add('filter-disabled');
     } else {
-        if (sectorFilter) { sectorFilter.disabled = false; sectorFilter.style.opacity = '1'; }
+        if (sectorFilter) { sectorFilter.disabled = false; sectorFilter.classList.remove('filter-disabled'); }
         if (yearSelector) { yearSelector.style.pointerEvents = 'all'; yearSelector.style.opacity = '1'; }
+        if (periodFilterWrapper) {
+            periodFilterWrapper.classList.remove('filter-disabled');
+            periodFilterWrapper.style.display = 'flex';
+        }
     }
 
     document.getElementById('btn-view-table').classList.toggle('active', v === 'table');
@@ -2051,6 +2284,7 @@ async function saveAnalysisToCloud(id, year, monthIdx, dataObj) {
     const itemName = item ? item.name : "Indicador";
 
     const payload = {
+        token: API_TOKEN,
         type: "save_analysis", // Comando especial para o Backend
         data: {
             id: id,
@@ -2074,6 +2308,7 @@ async function saveAnalysisToCloud(id, year, monthIdx, dataObj) {
 // --- EXCLUSÃO ESPECÍFICA DE ANÁLISE (NOVO) ---
 async function deleteAnalysisFromCloud(id, year, monthIdx) {
     const payload = {
+        token: API_TOKEN,
         type: "delete_analysis",
         data: {
             id: id,
@@ -2104,7 +2339,8 @@ function getAnalysis(id, year, idx) {
    ================================================================= */
 
 function renderManagerialView() {
-    const data = fullDB[currentYear];
+    const rawData = fullDB[currentYear] || [];
+    const data = rawData.filter(i => !hiddenSectors.includes(i.sector)); // Exclude hidden sectors from managerial view
     const metrics = calculateManagerialMetrics(data);
 
     // 1. Render KPIs
@@ -2367,4 +2603,891 @@ function checkImprovement(curr, prev, logic) {
 
     if (logic === 'maior') return c > p;
     else return c < p;
+}
+
+// --- NPS FUNCTIONALITY ---
+let npsVisible = false;
+// NPS UPDATE: Estrutura inicial e persistência
+let npsData = JSON.parse(localStorage.getItem('fav_nps_data')) || {};
+// Ensure targets structure exists
+if (!npsData.targets) npsData.targets = {};
+
+// NPS UPDATE: Helpers de cálculo e migração (FONTE ÚNICA DA VERDADE)
+function calcNPSMonth(monthObj) {
+    if (!monthObj) return null;
+    const p = monthObj.promoters !== null ? Number(monthObj.promoters) : NaN;
+    const n = monthObj.neutrals !== null ? Number(monthObj.neutrals) : NaN;
+    const d = monthObj.detractors !== null ? Number(monthObj.detractors) : NaN;
+
+    if (isNaN(p) || isNaN(d)) return null;
+    const total = p + (isNaN(n) ? 0 : n) + d;
+    if (total === 0) return 0;
+
+    // NPS = %Promotores - %Detratores
+    const score = ((p / total) * 100) - ((d / total) * 100);
+    return parseFloat(score.toFixed(2));
+}
+
+function buildNPSCalculatedArray(year) {
+    const data = (npsData[year] && Array.isArray(npsData[year])) ? npsData[year] : Array(12).fill(null);
+    return data.map(m => calcNPSMonth(m));
+}
+
+function getNPSGoal(year) {
+    return npsData.targets && npsData.targets[year] ? npsData.targets[year] : 75;
+}
+
+function migrateNPSDataIfNeeded(raw) {
+    if (!raw) return {};
+    const migrated = JSON.parse(JSON.stringify(raw));
+    Object.keys(migrated).forEach(year => {
+        if (Array.isArray(migrated[year])) {
+            migrated[year] = migrated[year].map(val => {
+                if (typeof val === 'number') {
+                    // Valor legado preservado apenas se quiséssemos, mas a regra pede migrar para o novo formato
+                    // Como não temos os componentes originais, iniciamos como null para não "inventar" partes
+                    return { promoters: null, neutrals: null, detractors: null, legacy: val };
+                }
+                return val;
+            });
+        }
+    });
+    return migrated;
+}
+
+function updateNPSCalculation(idx) {
+    const prom = document.getElementById(`nps-prom-${idx}`).value;
+    const neut = document.getElementById(`nps-neut-${idx}`).value;
+    const detr = document.getElementById(`nps-detr-${idx}`).value;
+    const resEl = document.getElementById(`nps-res-${idx}`);
+
+    if (prom === "" || detr === "") {
+        resEl.value = "-";
+        return;
+    }
+
+    const p = parseInt(prom) || 0;
+    const n = parseInt(neut) || 0;
+    const d = parseInt(detr) || 0;
+
+    const total = p + n + d;
+    const pPercEl = document.getElementById(`nps-prom-perc-${idx}`);
+    const nPercEl = document.getElementById(`nps-neut-perc-${idx}`);
+    const dPercEl = document.getElementById(`nps-detr-perc-${idx}`);
+
+    if (total === 0) {
+        resEl.value = "0.00";
+        if (pPercEl) pPercEl.innerText = "-";
+        if (nPercEl) nPercEl.innerText = "-";
+        if (dPercEl) dPercEl.innerText = "-";
+        return;
+    }
+
+    // Atualiza Percentuais
+    if (pPercEl) pPercEl.innerText = ((p / total) * 100).toFixed(1) + "%";
+    if (nPercEl) nPercEl.innerText = ((n / total) * 100).toFixed(1) + "%";
+    if (dPercEl) dPercEl.innerText = ((d / total) * 100).toFixed(1) + "%";
+
+    const score = ((p / total) * 100) - ((d / total) * 100);
+    resEl.value = score.toFixed(2);
+}
+
+// Qualitative Data Store (Frontend Only)
+let npsDescData = JSON.parse(localStorage.getItem('fav_nps_desc')) || {};
+// Structure: { "2025": { "0": { elogios: "", criticas: "" } } }
+
+// Fallback consolidation function: present so calls to it don't break rendering.
+// Kept intentionally minimal to avoid side-effects; can be extended later if needed.
+function renderNPSConsolidation() {
+    // Prepare any derived values for the NPS view (currently no-op)
+    return;
+}
+
+function toggleNPS() {
+    const npsArea = document.getElementById('nps-area');
+    const chartsArea = document.getElementById('charts-area');
+    const btn = document.getElementById('btn-nps-toggle');
+    const periodDisplay = document.getElementById('nps-period-display');
+
+    // Toggle state
+    npsVisible = !npsVisible;
+
+    // NPS UPDATE: Trava o seletor de setor (NPS é institucional)
+    const sectorFilter = document.getElementById('sector-filter');
+    if (sectorFilter) sectorFilter.disabled = npsVisible;
+
+    if (npsVisible) {
+        chartsArea.style.display = 'none';
+        npsArea.style.display = 'flex';
+        if (btn) btn.classList.add('active');
+
+        // Update Period Display
+        if (periodDisplay) {
+            const mStart = months[analyticsPeriod.start];
+            const mEnd = months[analyticsPeriod.end];
+            periodDisplay.innerText = `Período: ${mStart} a ${mEnd} de ${currentYear}`;
+        }
+
+        // Ensure chart renders after the element becomes visible
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                try { renderNPSChart(); } catch (e) { console.error(e); }
+            });
+        });
+        lucide.createIcons();
+    } else {
+        npsArea.style.display = 'none';
+        chartsArea.style.display = 'grid';
+        if (btn) btn.classList.remove('active');
+    }
+}
+
+function openNPSEditor() {
+    const grid = document.getElementById('npsMonthsGrid');
+    grid.innerHTML = '';
+
+    // Meta (Goal) section at the top
+    const targetVal = getNPSGoal(currentYear);
+    const headerHtml = `
+        <div style="background:var(--accent-glow); padding:15px 25px; border-radius:12px; border:1px solid var(--accent); margin-bottom:20px; display:flex; align-items:center; gap:20px; justify-content: center;">
+            <div style="display:flex; align-items:center; gap:12px;">
+                <i data-lucide="target" style="width:20px; color:var(--accent)"></i>
+                <span style="font-weight:700; color:var(--text-main); font-size:1.05rem; letter-spacing:0.5px;">META ESTRATÉGICA (${currentYear}):</span>
+            </div>
+            <input type="number" id="nps-goal-input" class="input-field" value="${targetVal}" 
+                   style="width:80px; height:36px; text-align:center; font-weight:800; color:var(--accent); border-color:var(--accent); font-size:1.1rem; border-radius:8px;">
+        </div>
+        
+        <div style="display:grid; grid-template-columns: 140px 90px 90px 90px 100px; gap:15px; padding:0 10px 10px; color:var(--text-muted); font-size:0.7rem; text-transform:uppercase; font-weight:700; justify-content: center; letter-spacing:1px; border-bottom:1px solid var(--border); margin-bottom:10px;">
+            <span>Mês</span>
+            <span style="text-align:center">Promotores</span>
+            <span style="text-align:center">Neutros</span>
+            <span style="text-align:center">Detratores</span>
+            <span style="text-align:center">NPS Final</span>
+        </div>
+    `;
+    grid.innerHTML = headerHtml;
+
+    if (!npsData[currentYear] || !Array.isArray(npsData[currentYear])) {
+        npsData[currentYear] = Array(12).fill(null).map(() => ({ promoters: null, neutrals: null, detractors: null }));
+    }
+
+    months.forEach((m, i) => {
+        const item = npsData[currentYear][i] || { promoters: null, neutrals: null, detractors: null };
+        const pVal = item.promoters !== null ? item.promoters : '';
+        const nVal = item.neutrals !== null ? item.neutrals : '';
+        const dVal = item.detractors !== null ? item.detractors : '';
+        const calcVal = calcNPSMonth(item);
+
+        const total = (item.promoters || 0) + (item.neutrals || 0) + (item.detractors || 0);
+        const pPerc = total > 0 ? ((item.promoters || 0) / total * 100).toFixed(1) + '%' : '-';
+        const nPerc = total > 0 ? ((item.neutrals || 0) / total * 100).toFixed(1) + '%' : '-';
+        const dPerc = total > 0 ? ((item.detractors || 0) / total * 100).toFixed(1) + '%' : '-';
+
+        grid.innerHTML += `
+            <div class="nps-editor-row" style="padding:10px; border-radius:10px; display:grid; grid-template-columns: 140px 90px 90px 90px 100px; gap:15px; align-items:center; justify-content: center; transition: all 0.2s ease;">
+                <span style="font-weight:700; color:var(--text-main); font-size:0.95rem;">${m}</span>
+                
+                <div style="display:flex; flex-direction:column; align-items:center;">
+                    <input type="number" id="nps-prom-${i}" class="input-field nps-small-input" value="${pVal}" placeholder="0" 
+                           oninput="updateNPSCalculation(${i})" style="width:75px; height:34px; text-align:center; padding:5px; font-weight:600; border-radius:6px; background:var(--bg-elevated);">
+                    <span id="nps-prom-perc-${i}" style="font-size:0.65rem; color:var(--text-muted); font-weight:700; margin-top:4px;">${pPerc}</span>
+                </div>
+                
+                <div style="display:flex; flex-direction:column; align-items:center;">
+                    <input type="number" id="nps-neut-${i}" class="input-field nps-small-input" value="${nVal}" placeholder="0" 
+                           oninput="updateNPSCalculation(${i})" style="width:75px; height:34px; text-align:center; padding:5px; font-weight:600; border-radius:6px; background:var(--bg-elevated);">
+                    <span id="nps-neut-perc-${i}" style="font-size:0.65rem; color:var(--text-muted); font-weight:700; margin-top:4px;">${nPerc}</span>
+                </div>
+                
+                <div style="display:flex; flex-direction:column; align-items:center;">
+                    <input type="number" id="nps-detr-${i}" class="input-field nps-small-input" value="${dVal}" placeholder="0" 
+                           oninput="updateNPSCalculation(${i})" style="width:75px; height:34px; text-align:center; padding:5px; font-weight:600; border-radius:6px; background:var(--bg-elevated);">
+                    <span id="nps-detr-perc-${i}" style="font-size:0.65rem; color:var(--text-muted); font-weight:700; margin-top:4px;">${dPerc}</span>
+                </div>
+
+                <div style="display:flex; justify-content:center;">
+                    <input type="text" id="nps-res-${i}" class="input-field" value="${calcVal !== null ? calcVal.toFixed(2) : '-'}" 
+                           readonly style="width:80px; text-align:center; background:transparent; font-weight:800; border:none; color:var(--accent); font-size:1.1rem; cursor:default;">
+                </div>
+            </div>
+        `;
+    });
+
+    document.getElementById('npsModal').classList.add('open');
+    lucide.createIcons();
+}
+
+async function saveNPSData() {
+    const newData = [];
+    let hasInvalid = false;
+
+    for (let i = 0; i < 12; i++) {
+        const p = document.getElementById(`nps-prom-${i}`).value;
+        const n = document.getElementById(`nps-neut-${i}`).value;
+        const d = document.getElementById(`nps-detr-${i}`).value;
+
+        if (p === "" && n === "" && d === "") {
+            newData.push({ promoters: null, neutrals: null, detractors: null });
+        } else {
+            const numP = parseInt(p);
+            const numN = parseInt(n);
+            const numD = parseInt(d);
+
+            if ((p !== "" && (isNaN(numP) || numP < 0)) ||
+                (n !== "" && (isNaN(numN) || numN < 0)) ||
+                (d !== "" && (isNaN(numD) || numD < 0))) {
+                hasInvalid = true;
+            }
+
+            newData.push({
+                promoters: p !== "" ? numP : null,
+                neutrals: n !== "" ? numN : null,
+                detractors: d !== "" ? numD : null
+            });
+        }
+    }
+
+    if (hasInvalid) {
+        showToast("Valores inválidos (use apenas números ≥ 0)", "error");
+        return;
+    }
+
+    // SALVAR META
+    const goalVal = parseInt(document.getElementById('nps-goal-input').value);
+    if (!npsData.targets) npsData.targets = {};
+    npsData.targets[currentYear] = isNaN(goalVal) ? 75 : goalVal;
+
+    // NPS UPDATE: Atualiza estrutura
+    npsData[currentYear] = newData;
+
+    // Persist to LocalStorage (Cache Instantâneo)
+    localStorage.setItem('fav_nps_data', JSON.stringify(npsData));
+
+    // Fecha o modal imediatamente
+    closeModal('npsModal');
+    renderNPSChart();
+
+    // --- ENVIAR NÚMEROS PARA NUVEM EM SEGUNDO PLANO ---
+    const payload = {
+        token: API_TOKEN,
+        type: "save_nps",
+        data: npsData
+    };
+
+    fetch(API_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .then(() => showToast("Dados sincronizados!", "success"))
+        .catch(e => {
+            console.error(e);
+            showToast("Erro na sincronização (Cache OK)", "error");
+        });
+}
+
+
+function openNPSPdfModal() {
+    // Populate month selector
+    const monthSelect = document.getElementById('pdf-month-select');
+    if (monthSelect) {
+        let opts = `<option value="all">Resumo do Período</option>`;
+        opts += months.map((m, i) => `<option value="${i}">${m}</option>`).join('');
+        monthSelect.innerHTML = opts;
+        // default to end of analytics period
+        monthSelect.value = analyticsPeriod.end;
+    }
+
+    // Prefill praises/complaints
+    const selIdx = parseInt(monthSelect ? monthSelect.value : analyticsPeriod.end);
+    const yearData = npsDescData[currentYear] || {};
+    const cell = (yearData[selIdx]) ? yearData[selIdx] : null;
+    document.getElementById('pdf-praises').value = cell && cell.elogios ? cell.elogios : '';
+    document.getElementById('pdf-complaints').value = cell && cell.criticas ? cell.criticas : '';
+
+    // NPS UPDATE: Manual numeric inputs removed (pulled from npsData automatically)
+
+    document.getElementById('npsPdfModal').classList.add('open');
+    // Update praises/complaints when month selection changes
+    if (monthSelect) {
+        monthSelect.onchange = () => {
+            const idx = parseInt(monthSelect.value);
+            const ydata = npsDescData[currentYear] || {};
+            const c = ydata[idx] || null;
+            document.getElementById('pdf-praises').value = c && c.elogios ? c.elogios : '';
+            document.getElementById('pdf-complaints').value = c && c.criticas ? c.criticas : '';
+        };
+    }
+}
+
+function generateNPSPdf() {
+    // 🧠 GUARDAS OBRIGATÓRIOS (ANTI-CRASH)
+    if (!npsData || !npsData[currentYear]) {
+        showToast("Nenhum dado de NPS para este ano.", "error"); // Corrigido de showToast para showToast (já está correto)
+        return;
+    }
+
+    // --- SALVAR DADOS QUALITATIVOS (CACHE E BACKGROUND) ---
+    const monthSelectEl = document.getElementById('pdf-month-select');
+    const exportedMonthIdx = monthSelectEl ? parseInt(monthSelectEl.value) : analyticsPeriod.end;
+    const txtComplaints = document.getElementById('pdf-complaints').value;
+    const txtPraises = document.getElementById('pdf-praises').value;
+
+    if (!npsDescData[currentYear]) npsDescData[currentYear] = {};
+    npsDescData[currentYear][exportedMonthIdx] = {
+        elogios: txtPraises,
+        criticas: txtComplaints
+    };
+
+    localStorage.setItem('fav_nps_desc', JSON.stringify(npsDescData));
+
+    // Enviar qualitativos pro back em background
+    const qualPayload = {
+        token: API_TOKEN,
+        type: "save_nps_desc",
+        data: npsDescData
+    };
+    fetch(API_URL, { method: 'POST', body: JSON.stringify(qualPayload) }).catch(console.error);
+
+    showToast("Gerando Boletim...", "wait");
+    closeModal('npsPdfModal');
+
+    setTimeout(() => {
+        try {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF('p', 'mm', 'a4'); // Portrait, A4
+            const pageWidth = doc.internal.pageSize.getWidth();
+
+            // COLORS
+            const colBlue = [31, 60, 136];
+            const colRed = [229, 57, 53];
+            const colYellow = [251, 192, 45];
+            const colGreen = [124, 179, 66];
+            const colText = [51, 51, 51];
+            const colMuted = [150, 150, 150];
+
+            // --- HEADER ---
+            doc.setFillColor(...colBlue);
+            doc.rect(0, 0, pageWidth, 40, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(20);
+            doc.text("BOLETIM DE EXPERIÊNCIA", pageWidth / 2, 18, { align: "center" });
+            doc.setFontSize(14);
+            doc.setFont("helvetica", "normal");
+            doc.text("NPS – Net Promoter Score", pageWidth / 2, 28, { align: "center" });
+
+            // --- PERIOD ---
+            const monthSelectEl = document.getElementById('pdf-month-select');
+            let periodStr = '';
+            let exportedMonthIdx = null;
+            if (monthSelectEl) {
+                const val = monthSelectEl.value;
+                if (val === 'all') {
+                    exportedMonthIdx = 'all';
+                    periodStr = `RESUMO DO PERÍODO (${months[analyticsPeriod.start]} a ${months[analyticsPeriod.end]})`;
+                } else {
+                    exportedMonthIdx = parseInt(val);
+                    periodStr = `${months[exportedMonthIdx]} de ${currentYear}`;
+                }
+            }
+            if (!periodStr) {
+                periodStr = `${months[analyticsPeriod.start]} a ${months[analyticsPeriod.end]} de ${currentYear}`;
+            }
+
+            // --- PERIOD (HIGHLIGHTED) ---
+            doc.setTextColor(...colBlue);
+            doc.setFontSize(14);
+            doc.setFont("helvetica", "bold");
+            doc.text(periodStr.toUpperCase(), pageWidth / 2, 55, { align: "center" });
+
+            doc.setDrawColor(...colBlue);
+            doc.setLineWidth(0.5);
+            doc.line(pageWidth / 2 - 40, 58, pageWidth / 2 + 40, 58);
+
+            // --- SCORE SECTION ---
+            const scoreY = 65;
+            let validScore = "N/D";
+            const npsCalculatedArray = buildNPSCalculatedArray(currentYear);
+            const yearData = npsData[currentYear] || [];
+
+            let counts = { prom: 0, neu: 0, det: 0 };
+
+            if (exportedMonthIdx !== 'all' && exportedMonthIdx !== null) {
+                const item = yearData[exportedMonthIdx] || { promoters: 0, neutrals: 0, detractors: 0 };
+                const calculated = npsCalculatedArray[exportedMonthIdx];
+                validScore = (calculated !== null) ? calculated : "N/D";
+                counts = {
+                    prom: item.promoters || 0,
+                    neu: item.neutrals || 0,
+                    det: item.detractors || 0
+                };
+            } else {
+                // Consolidação: Média simples dos meses válidos no período
+                let sum = 0, count = 0;
+                let cP = 0, cN = 0, cD = 0;
+                for (let i = analyticsPeriod.start; i <= analyticsPeriod.end; i++) {
+                    if (npsCalculatedArray[i] !== null) {
+                        sum += npsCalculatedArray[i];
+                        count++;
+                        cP += (yearData[i].promoters || 0);
+                        cN += (yearData[i].neutrals || 0);
+                        cD += (yearData[i].detractors || 0);
+                    }
+                }
+                if (count > 0) {
+                    validScore = Math.round(sum / count);
+                    counts = { prom: cP, neu: cN, det: cD };
+                }
+            }
+
+            // Big Score Card
+            doc.setDrawColor(230);
+            doc.setFillColor(250, 250, 250);
+            doc.roundedRect(20, scoreY, pageWidth - 40, 40, 4, 4, 'F');
+
+            const labelCard = exportedMonthIdx === 'all' ? "SCORE MÉDIO DO PERÍODO" : "SCORE DO MÊS SELECIONADO";
+            doc.setTextColor(...colMuted);
+            doc.setFontSize(10);
+            doc.text(labelCard, 35, scoreY + 15);
+
+            doc.setTextColor(...colBlue);
+            doc.setFontSize(48);
+            doc.setFont("helvetica", "bold");
+            doc.text(String(validScore) + "%", 35, scoreY + 32);
+
+            // Added: Total Survey Count
+            const totalSurveys = (counts.prom || 0) + (counts.neu || 0) + (counts.det || 0);
+            doc.setTextColor(...colMuted);
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+            doc.text(`${totalSurveys} PESQUISAS REALIZADAS`, pageWidth - 35, scoreY + 28, { align: "right" });
+
+            // Benchmark Info
+            const targetScore = getNPSGoal(currentYear).toFixed(2);
+            doc.setTextColor(...colText);
+            doc.setFontSize(14);
+            doc.setFont("helvetica", "bold");
+            doc.text(`META: ${targetScore}%`, pageWidth - 35, scoreY + 20, { align: "right" });
+
+            // --- SEGMENTATION SECTION (Faces) ---
+            const segY = 115;
+            const segW = 55;
+            const segX = (pageWidth - (segW * 3 + 10)) / 2;
+
+            const drawFace = (x, y, type) => {
+                doc.setLineWidth(0.5);
+                doc.circle(x, y, 5);
+                doc.setFillColor(doc.getDrawColor());
+                doc.circle(x - 1.5, y - 1, 0.3, 'F');
+                doc.circle(x + 1.5, y - 1, 0.3, 'F');
+
+                if (type === 'happy') {
+                    doc.lines([[1, 1], [1, 0], [1, -1]], x - 1.5, y + 1);
+                } else if (type === 'neutral') {
+                    doc.line(x - 1.5, y + 1.5, x + 1.5, y + 1.5);
+                } else {
+                    doc.lines([[1, -1], [1, 0], [1, 1]], x - 1.5, y + 2.5);
+                }
+            };
+
+            // Calculations for percentages in PDF with 2 decimal places
+            const total = counts.prom + counts.neu + counts.det;
+            const getPerc = (val) => total > 0 ? ((val / total) * 100).toFixed(2) + "%" : "0.00%";
+
+            // Detractors
+            doc.setFillColor(...colRed);
+            doc.roundedRect(segX, segY, segW, 25, 3, 3, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(9);
+            doc.text("DETRATORES", segX + segW / 2, segY + 8, { align: "center" });
+            doc.setFontSize(18);
+            doc.text(getPerc(counts.det), segX + segW / 2, segY + 19, { align: "center" });
+            doc.setDrawColor(255, 255, 255);
+            drawFace(segX + 8, segY + 12, 'sad');
+
+            // Neutrals
+            doc.setFillColor(...colYellow);
+            doc.roundedRect(segX + segW + 5, segY, segW, 25, 3, 3, 'F');
+            doc.setTextColor(...colText);
+            doc.setFontSize(9);
+            doc.text("NEUTROS", segX + segW + 5 + segW / 2, segY + 8, { align: "center" });
+            doc.setFontSize(18);
+            doc.text(getPerc(counts.neu), segX + segW + 5 + segW / 2, segY + 19, { align: "center" });
+            doc.setDrawColor(...colText);
+            drawFace(segX + segW + 5 + 8, segY + 12, 'neutral');
+
+            // Promoters
+            doc.setFillColor(...colGreen);
+            doc.roundedRect(segX + (segW + 5) * 2, segY, segW, 25, 3, 3, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFontSize(9);
+            doc.text("PROMOTORES", segX + (segW + 5) * 2 + segW / 2, segY + 8, { align: "center" });
+            doc.setFontSize(18);
+            doc.text(getPerc(counts.prom), segX + (segW + 5) * 2 + segW / 2, segY + 19, { align: "center" });
+            doc.setDrawColor(255, 255, 255);
+            drawFace(segX + (segW + 5) * 2 + 8, segY + 12, 'happy');
+
+            // --- QUALITATIVE (Complaints & Praises) ---
+            const qualY = 155;
+            const qualW = (pageWidth - 50) / 2;
+            const txtComplaints = document.getElementById('pdf-complaints').value || "Nenhum registro específico.";
+            const txtPraises = document.getElementById('pdf-praises').value || "Nenhum registro específico.";
+
+            // Boxes...
+            doc.setFillColor(255, 248, 248);
+            doc.setDrawColor(...colRed);
+            doc.setLineWidth(0.4);
+            doc.roundedRect(20, qualY, qualW, 55, 4, 4, 'FD');
+            doc.setTextColor(...colRed);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(12);
+            doc.text("PONTOS DE ATENÇÃO", 34, qualY + 10);
+            drawFace(27, qualY + 8, 'sad');
+            doc.setTextColor(50, 10, 10);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            const splitComplaints = doc.splitTextToSize(txtComplaints, qualW - 12);
+            doc.text(splitComplaints, 26, qualY + 22);
+
+            const praiseX = pageWidth - 20 - qualW;
+            doc.setFillColor(248, 255, 248);
+            doc.setDrawColor(...colGreen);
+            doc.setLineWidth(0.4);
+            doc.roundedRect(praiseX, qualY, qualW, 55, 4, 4, 'FD');
+            doc.setTextColor(...colGreen);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(11);
+            doc.text("PONTOS POSITIVOS", praiseX + 15, qualY + 10);
+            drawFace(praiseX + 8, qualY + 8, 'happy');
+            doc.setTextColor(20, 60, 20);
+            doc.setFont("helvetica", "normal");
+            doc.setFontSize(10);
+            const splitPraises = doc.splitTextToSize(txtPraises, qualW - 12);
+            doc.text(splitPraises, praiseX + 7, qualY + 22);
+
+            // --- HISTORICAL CHART ---
+            const chartY = 215;
+            doc.setTextColor(...colBlue);
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(13);
+            doc.text("ANÁLISE DE TENDÊNCIA ANUAL", pageWidth / 2, chartY, { align: "center" });
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 800;
+            tempCanvas.height = 300;
+
+            const labelsMonths = months.slice(analyticsPeriod.start, analyticsPeriod.end + 1);
+            const rawDataPoints = buildNPSCalculatedArray(currentYear).slice(analyticsPeriod.start, analyticsPeriod.end + 1);
+            const cleanDataPoints = rawDataPoints.map(v => v === null ? 0 : v);
+
+            const npsPdfChartInstance = renderNPSPdfChart(tempCanvas, labelsMonths, cleanDataPoints);
+
+            doc.setFillColor(255, 255, 255);
+            doc.setDrawColor(240);
+            doc.setLineWidth(0.5);
+            doc.roundedRect(15, chartY + 2, pageWidth - 30, 70, 2, 2, 'FD');
+
+            const imgData = tempCanvas.toDataURL('image/png', 1.0);
+            doc.addImage(imgData, 'PNG', 20, chartY + 8, pageWidth - 40, 50);
+
+            // Destruir instância após uso
+            if (npsPdfChartInstance) npsPdfChartInstance.destroy();
+
+            // --- DATA TABLE BELOW CHART (Month Labels Only) ---
+            const tableY = chartY + 62;
+            const cellW = (pageWidth - 46) / labelsMonths.length;
+            labelsMonths.forEach((m, i) => {
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(10);
+                doc.setTextColor(0, 0, 0);
+                doc.text(m.substring(0, 3).toUpperCase(), 23 + i * cellW + cellW / 2, tableY + 2, { align: "center" });
+            });
+
+            // Save
+            const fileName = exportedMonthIdx !== null
+                ? `Boletim_NPS_${months[exportedMonthIdx]}_${currentYear}.pdf`
+                : `Boletim_NPS_Resumo_${currentYear}.pdf`;
+            doc.save(fileName);
+            showToast("PDF Gerado!");
+
+        } catch (e) {
+            console.error(e);
+            showToast("Erro ao gerar PDF", "error");
+        }
+    }, 600);
+}
+
+
+function renderNPSChart() {
+    // NPS SCREEN CHART
+    renderNPSConsolidation();
+    const canvas = document.getElementById('chart-nps');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (charts.nps) charts.nps.destroy();
+
+    try {
+        const parent = canvas.parentNode;
+        if (parent && parent.classList && parent.classList.contains('chart-box')) {
+            parent.style.height = '450px';
+        }
+        canvas.style.display = 'block';
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+    } catch (e) { }
+
+    const start = analyticsPeriod.start;
+    const end = analyticsPeriod.end;
+    const activeMonths = months.slice(start, end + 1);
+
+    // buildNPSCalculatedArray() -> fonte única de dados
+    const chartData = buildNPSCalculatedArray(currentYear).slice(start, end + 1);
+
+    const colors = getChartColors();
+    const isLight = currentTheme === 'light';
+
+    let bestVal = -Infinity;
+    let bestIdx = -1;
+    chartData.forEach((v, i) => {
+        if (v !== null) {
+            if (v > bestVal) { bestVal = v; bestIdx = i; }
+        }
+    });
+
+    const gradientFill = ctx.createLinearGradient(0, 0, 0, 400);
+    gradientFill.addColorStop(0, 'rgba(59, 130, 246, 0.4)');
+    gradientFill.addColorStop(1, 'rgba(59, 130, 246, 0.02)');
+
+    const pointBgColors = chartData.map((v, i) => i === bestIdx ? COL_GOLD : COL_ACCENT);
+    const finalRadii = chartData.map((v, i) => i === bestIdx ? 8 : 4);
+    const pointHoverBgColors = chartData.map((v, i) => i === bestIdx ? COL_GOLD : COL_ACCENT_HOVER);
+
+    const npsPointValuePlugin = {
+        id: 'npsPointValuePlugin',
+        afterDatasetsDraw: (chart) => {
+            const { ctx } = chart;
+            const meta = chart.getDatasetMeta(0);
+            const yScale = chart.scales.y;
+
+            meta.data.forEach((point, index) => {
+                const finalVal = chart.data.datasets[0].data[index];
+                if (finalVal === null || finalVal === undefined) return;
+
+                let currentVal = yScale.getValueForPixel(point.y);
+                if (point.y > yScale.getPixelForValue(yScale.min) - 5) return;
+
+                ctx.save();
+                const isBest = index === bestIdx;
+                ctx.font = isBest ? '900 22px Inter' : 'bold 15px Inter';
+                ctx.fillStyle = isBest ? COL_GOLD : (isLight ? '#000000' : colors.text);
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+
+                if (!isLight) {
+                    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+                    ctx.shadowBlur = 6;
+                    ctx.shadowOffsetX = 0;
+                    ctx.shadowOffsetY = 2;
+                }
+
+                const r = point.options.radius || 4;
+                const displayText = currentVal.toFixed(2) + "%";
+                ctx.fillText(displayText, point.x, point.y - (r + 12));
+                ctx.restore();
+            });
+        }
+    };
+
+    const bestMonthPlugin = {
+        id: 'bestMonthPlugin',
+        afterDraw: (chart) => {
+            const container = chart.canvas.parentNode;
+            const meta = chart.getDatasetMeta(0);
+            if (bestIdx === -1 || !meta.data[bestIdx]) {
+                const oldBadge = container.querySelector('.nps-best-month-badge');
+                if (oldBadge) oldBadge.remove();
+                container.querySelectorAll('.nps-sparkle').forEach(el => el.remove());
+                return;
+            }
+
+            const point = meta.data[bestIdx];
+            let badge = container.querySelector('.nps-best-month-badge');
+
+            if (!badge) {
+                badge = document.createElement('div');
+                badge.className = 'best-month-badge nps-best-month-badge';
+                badge.innerText = 'Melhor mês';
+                badge.style.background = 'linear-gradient(135deg, #B8860B, #8B6508)';
+                badge.style.border = '1px solid #D4AF37';
+                badge.style.opacity = '0';
+                badge.style.animation = 'fadeIn 0.5s ease-out forwards';
+                container.appendChild(badge);
+
+                const sparkleOffsets = [{ x: -15, y: -15 }, { x: 15, y: -10 }, { x: 0, y: 20 }];
+                sparkleOffsets.forEach((off, idx) => {
+                    const sparkle = document.createElement('div');
+                    sparkle.className = 'sparkle nps-sparkle';
+                    sparkle.style.animationDelay = (idx * 0.3) + 's';
+                    container.appendChild(sparkle);
+                });
+            }
+
+            badge.style.left = point.x + 'px';
+            badge.style.top = (point.y - 45) + 'px';
+
+            const sparkleOffsets = [{ x: -15, y: -15 }, { x: 15, y: -10 }, { x: 0, y: 20 }];
+            const sparkles = container.querySelectorAll('.nps-sparkle');
+            if (sparkles.length === 3) {
+                sparkles.forEach((s, i) => {
+                    s.style.left = (point.x + sparkleOffsets[i].x) + 'px';
+                    s.style.top = (point.y + sparkleOffsets[i].y) + 'px';
+                });
+            }
+        }
+    };
+
+    charts.nps = new Chart(ctx, {
+        type: 'line', // type: 'line'
+        data: {
+            labels: activeMonths,
+            datasets: [{
+                label: 'NPS Score',
+                data: chartData,
+                borderColor: COL_ACCENT,
+                backgroundColor: gradientFill,
+                borderWidth: 3,
+                fill: true,
+                tension: 0.35, // tension entre 0.3 e 0.4
+                pointBackgroundColor: pointBgColors,
+                pointBorderColor: COL_BG_LIGHT,
+                pointBorderWidth: 2,
+                pointRadius: finalRadii,
+                pointHoverRadius: 10,
+                pointHoverBackgroundColor: pointHoverBgColors
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            layout: { padding: { top: 80, bottom: 10, left: 40, right: 40 } },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `NPS: ${ctx.raw}`
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { display: false },
+                    ticks: { color: colors.text }
+                },
+                y: {
+                    beginAtZero: true,
+                    suggestedMax: 100,
+                    grid: { color: colors.grid, borderDash: [5, 5] },
+                    // NPS FIX – DUPLICATE LABELS
+                    ticks: { display: false } // DESABILITAR escrita de valores automáticos
+                }
+            }
+        },
+        plugins: [npsPointValuePlugin, bestMonthPlugin]
+    });
+}
+
+// NPS PDF CHART (SEPARADO E EXCLUSIVO)
+function renderNPSPdfChart(canvas, labels, data) {
+    // 🧠 ASSEGURA QUE O DATASET SEJA NUMÉRICO E NÃO TENHA NULLS PARA O CHART.JS NO PDF
+    const safeData = data.map(v => (v === null || isNaN(v)) ? 0 : v);
+
+    return new Chart(canvas, {
+        type: 'line', // type: 'line'
+        data: {
+            labels: labels,
+            datasets: [{
+                data: safeData,
+                borderColor: '#1f3c88',
+                borderWidth: 2,
+                pointBackgroundColor: '#1f3c88',
+                pointRadius: 5,
+                fill: false,
+                tension: 0
+            }]
+        },
+        options: {
+            animation: false,
+            responsive: false,
+            plugins: {
+                legend: { display: false }
+            },
+            layout: { padding: { top: 30, right: 40, left: 40, bottom: 10 } },
+            scales: {
+                x: { display: false },
+                y: {
+                    beginAtZero: true,
+                    suggestedMax: 100,
+                    ticks: { color: '#000000', font: { size: 14 } },
+                    grid: { color: '#e0e0e0' }
+                }
+            }
+        },
+        plugins: [{
+            id: 'pdfValues',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
+                chart.getDatasetMeta(0).data.forEach((point, i) => {
+                    const val = data[i];
+                    if (val !== null && !isNaN(val)) {
+                        ctx.save();
+                        ctx.fillStyle = '#000000';
+                        ctx.font = 'bold 16px Arial';
+                        ctx.textAlign = 'center';
+                        ctx.fillText(String(val.toFixed(2)) + "%", point.x, point.y - 15);
+                        ctx.restore();
+                    }
+                });
+            }
+        }]
+    });
+}
+
+function updateTableVisibility(start, end) {
+    const table = document.getElementById('main-table');
+    if (!table) return;
+
+    // Header cells
+    const ths = table.querySelectorAll('thead th');
+    // Month columns are from index 2 to 13 (Indicador, Meta, Jan...)
+    // Jan is 2 (0-indexed)
+    for (let i = 0; i < 12; i++) {
+        const colIdx = i + 2;
+        if (ths[colIdx]) {
+            ths[colIdx].style.display = (i >= start && i <= end) ? '' : 'none';
+        }
+    }
+
+    // Body cells
+    const rows = table.querySelectorAll('tbody tr:not(.empty-state)');
+    rows.forEach(row => {
+        const tds = row.querySelectorAll('td');
+        // Check if it's a sector header (colspan)
+        if (tds.length === 1 && tds[0].colSpan > 1) {
+            // It's a header row
+            const visibleMonths = (end - start + 1);
+            tds[0].colSpan = 2 + visibleMonths;
+        } else {
+            // Data row
+            for (let i = 0; i < 12; i++) {
+                const colIdx = i + 2; // Data starts at index 2 (Name=0, Meta=1)
+                if (tds[colIdx]) {
+                    tds[colIdx].style.display = (i >= start && i <= end) ? '' : 'none';
+                }
+            }
+        }
+    });
+
+    // Update KPI Labels respecting filter (top headers)
+    const kpiPerf = document.getElementById('kpi-perf-label');
+    if (kpiPerf && start !== 0 && end !== 11) {
+        // Maybe change title? No need for now.
+    }
 }

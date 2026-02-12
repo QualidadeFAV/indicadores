@@ -17,7 +17,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="mini-kpi.css">
+
 
 </head>
 
@@ -38,9 +38,16 @@
                         <span>FAV ANALYTICS</span>
                     </div>
 
-                    <div class="filter-wrapper">
-                        <select id="sector-filter" onchange="setSector(this.value)">
+                    <div class="filter-wrapper flex-center-gap">
+                        <select id="sector-filter" onchange="setSector(this.value)" style="height:32px">
                         </select>
+
+                        <div id="period-filter-wrapper">
+                            <i data-lucide="calendar" style="width:14px"></i>
+                            <select id="an-start" onchange="setAnalyticsPeriod()"></select>
+                            <span>-</span>
+                            <select id="an-end" onchange="setAnalyticsPeriod()"></select>
+                        </div>
                     </div>
                 </div>
 
@@ -67,6 +74,10 @@
                             title="Visão Analítica">
                             <i data-lucide="bar-chart-2"></i>
                         </button>
+                        <button class="view-btn" id="btn-nps-toggle" onclick="toggleNPS()" title="NPS"
+                            style="display:none">
+                            <i data-lucide="smile"></i>
+                        </button>
                         <button class="view-btn" id="btn-view-manager" onclick="switchView('manager')"
                             title="Visão Gerencial">
                             <i data-lucide="briefcase"></i>
@@ -85,7 +96,8 @@
                     <table id="main-table">
                         <thead>
                             <tr>
-                                <th class="col-name">Indicador</th>
+                                <th class="col-name" ondblclick="openSectorManager()" style="user-select:none"
+                                    title="..">Indicador</th>
                                 <th class="col-meta">Meta</th>
                                 <th>Jan</th>
                                 <th>Fev</th>
@@ -113,6 +125,46 @@
             </div>
 
             <div id="view-exec" class="view-pane" style="display:none">
+
+
+
+
+
+                <div id="nps-area" class="nps-container">
+
+                    <div class="chart-card full nps-card-full">
+
+                        <div class="nps-header-group">
+                            <div class="flex-gap-12">
+                                <div class="flex-gap-8">
+                                    <i data-lucide="smile" class="nps-icon" style="color:var(--good)"></i>
+                                    <i data-lucide="meh" class="nps-icon" style="color:var(--warn)"></i>
+                                    <i data-lucide="frown" class="nps-icon" style="color:var(--bad)"></i>
+                                </div>
+                                <h3 class="nps-title">NPS - Net Promoter Score</h3>
+                            </div>
+                            <div class="nps-subtitle" id="nps-period-display">--</div>
+                        </div>
+
+                        <div class="chart-box chart-box-large">
+                            <canvas id="chart-nps"></canvas>
+                        </div>
+
+                    </div>
+
+                    <!-- NPS Controls (Below Chart) -->
+                    <div id="nps-controls" class="nps-controls">
+                        <button onclick="openNPSEditor()" class="btn-outline">
+                            <i data-lucide="edit-3" style="width:16px"></i> Editar Dados
+                        </button>
+
+                        <button onclick="openNPSPdfModal()" class="btn-outline">
+                            <i data-lucide="file-text" style="width:16px"></i> Exportar PDF
+                        </button>
+                    </div>
+
+                </div>
+
                 <div class="charts-grid" id="charts-area">
                     <div class="chart-card full">
                         <div class="chart-header-row">
@@ -371,6 +423,11 @@
                     </div>
 
                 </div>
+
+                <div id="mode-sectors" style="display:none">
+                    <!-- Dynamic Sector List injected via JS -->
+                    <p style="color:var(--text-muted); text-align:center; padding:20px">Carregando setores...</p>
+                </div>
             </div>
 
             <div class="modal-footer">
@@ -385,6 +442,9 @@
                         <button class="btn-ghost" onclick="switchToViewMode()">Cancelar</button>
                         <button class="btn-primary" onclick="saveItem()">Salvar Alterações</button>
                     </div>
+                </div>
+                <div id="footer-sectors" class="footer-content right" style="display:none">
+                    <button class="btn-primary" onclick="closeModal('mainModal'); renderApp();">Concluir</button>
                 </div>
             </div>
         </div>
@@ -562,6 +622,70 @@
                 </button>
                 <button class="btn-ghost" onclick="closeModal('analysisModal')">Cancelar</button>
                 <button class="btn-primary" onclick="saveAnalysis()">Salvar Análise</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="npsModal">
+        <div class="modal-box" style="max-width: 750px;">
+            <div class="modal-header">
+                <h3>Editar Dados NPS</h3>
+                <button class="close-btn" onclick="closeModal('npsModal')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-muted); margin-bottom:15px; font-size:0.9rem">
+                    Insira a quantidade de Promotores, Neutros e Detratores para cada mês. O NPS será calculado
+                    automaticamente.
+                </p>
+                <div id="npsMonthsGrid"
+                    style="display:flex; flex-direction:column; gap:10px; max-height:60vh; overflow-y:auto; padding-right:10px;">
+                    <!-- NPS UPDATE: Layout changed to row-based with 3 inputs + result -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-ghost" onclick="closeModal('npsModal')">Cancelar</button>
+                <button class="btn-primary" onclick="saveNPSData()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="npsPdfModal">
+        <div class="modal-box" style="max-width: 700px;">
+            <div class="modal-header">
+                <h3>Gerar Boletim NPS</h3>
+                <button class="close-btn" onclick="closeModal('npsPdfModal')"><i data-lucide="x"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="color:var(--text-muted); margin-bottom:20px; font-size:0.9rem">
+                    Preencha os destaques qualitativos para o boletim. Os dados numéricos serão puxados automaticamente
+                    do editor.
+                </p>
+
+                <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px;">
+                    <label style="font-size:0.9rem; color:var(--text-muted); margin:0">Mês para exportar:</label>
+                    <select id="pdf-month-select" class="input-field" style="width:160px;">
+                        <!-- options injected by JS -->
+                    </select>
+                </div>
+
+                <div class="form-grid">
+                    <!-- NPS UPDATE: Manual numeric inputs removed from PDF modal -->
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label style="color:var(--bad); font-weight:600;">Principais Queixas</label>
+                        <textarea id="pdf-complaints" class="input-field" rows="4"
+                            placeholder="Liste os pontos negativos..."></textarea>
+                    </div>
+
+                    <div class="form-group" style="grid-column: span 2;">
+                        <label style="color:var(--good); font-weight:600;">Principais Elogios</label>
+                        <textarea id="pdf-praises" class="input-field" rows="4"
+                            placeholder="Liste os pontos positivos..."></textarea>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-ghost" onclick="closeModal('npsPdfModal')">Cancelar</button>
+                <button class="btn-primary" onclick="generateNPSPdf()">Gerar PDF</button>
             </div>
         </div>
     </div>

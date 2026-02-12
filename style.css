@@ -238,7 +238,8 @@ td,
     background: rgba(125, 125, 125, 0.1);
     color: var(--text-muted);
     border: 1px solid var(--border);
-    padding: 6px 30px 6px 12px;
+    padding: 0 30px 0 12px;
+    height: 32px;
     border-radius: 6px;
     font-weight: 500;
     cursor: pointer;
@@ -249,14 +250,59 @@ td,
     background-position: right 10px center;
 }
 
-#sector-filter:hover {
+#period-filter-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: rgba(125, 125, 125, 0.1);
+    padding: 0 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    height: 32px;
+    transition: 0.2s;
+}
+
+#period-filter-wrapper select {
+    background: transparent;
+    color: var(--text-muted);
+    border: none;
+    font-size: 0.85rem;
+    outline: none;
+    cursor: pointer;
+    padding: 0;
+    font-weight: 500;
+    font-family: var(--font-stack);
+}
+
+#period-filter-wrapper i {
+    color: var(--text-muted);
+}
+
+/* Hover States Harmonization */
+#sector-filter:hover,
+#period-filter-wrapper:hover {
     background-color: var(--bg-elevated);
     color: var(--text-main);
     border-color: var(--border-hover);
 }
 
+/* Ensure inner elements inherit color on hover */
+#period-filter-wrapper:hover select,
+#period-filter-wrapper:hover i,
+#period-filter-wrapper:hover span {
+    color: var(--text-main);
+}
+
+.filter-disabled {
+    opacity: 0.5;
+    pointer-events: none;
+    filter: grayscale(1);
+}
+
 /* Fix para garantir que as opções do select fiquem com a cor certa */
-#sector-filter option {
+#sector-filter option,
+#an-start option,
+#an-end option {
     background-color: var(--bg-panel);
     color: var(--text-main);
 }
@@ -1991,4 +2037,150 @@ textarea.input-field:focus {
     font-weight: 700;
     font-size: 0.9rem;
     color: var(--text-muted);
+}
+
+/* =================================================================
+   --- MINI KPI (Header dos Gráficos) ---
+   (Copiado de mini-kpi.css)
+   ================================================================= */
+.chart-header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border);
+}
+
+.chart-header-row h3 {
+    margin: 0;
+}
+
+.mini-kpi-group {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+}
+
+.mini-kpi {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.2;
+}
+
+.mk-label {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.mk-val {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.mini-kpi.danger .mk-val {
+    color: var(--bad);
+}
+
+/* =================================================================
+   --- UTILITY CLASSES (Refactored from inline styles) ---
+   ================================================================= */
+
+.flex-center-gap {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.flex-gap-8 {
+    display: flex;
+    gap: 8px;
+}
+
+.flex-gap-12 {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.nps-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 75vh;
+    padding-top: 20px;
+    animation: fadeIn 0.3s ease;
+}
+
+.nps-card-full {
+    border: 1px solid var(--border);
+    position: relative;
+    padding: 40px;
+    width: 98%;
+    max-width: 1200px;
+    background: var(--bg-panel);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+.nps-header-group {
+    text-align: center;
+    margin-bottom: 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.nps-icon {
+    width: 24px;
+    height: 24px;
+    opacity: 0.9;
+}
+
+.nps-title {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-main);
+    letter-spacing: -0.5px;
+}
+
+.nps-subtitle {
+    font-size: 1rem;
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+.chart-box-large {
+    height: 450px;
+    width: 100%;
+}
+
+.nps-controls {
+    display: flex;
+    gap: 15px;
+    margin-top: 30px;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s;
+}
+
+.btn-outline:hover {
+    border-color: var(--text-main);
+    color: var(--text-main);
 }
