@@ -683,7 +683,7 @@
                                 <thead>
                                     <tr>
                                         <th>Polo</th>
-                                        <th>Paciente</th>
+                                        <th>Paciente / Registro</th>
                                         <th>Nota</th>
                                         <th>Observação / Motivo</th>
                                     </tr>
@@ -963,7 +963,8 @@
                     return k ? linha[k] : "";
                 };
 
-                const nomePaciente = getVal(['NOME', 'PACIENTE']) || "Identidade Preservada";
+                // Busca a coluna do prontuário (cobre as variações com e sem acento)
+                const prontuarioPaciente = getVal(['PRONTUÁRIO', 'PRONTUARIO', 'PRONT']) || "Não Informado";
 
                 // --- SISTEMA ROBUSTO DE BUSCA DE MOTIVO/SUGESTÃO ---
                 let valorCapturado = "";
@@ -1035,7 +1036,7 @@
                     } else {
                         detratores++;
                         if (origem === 'FAV') detratoresFav++; else detratoresCer++;
-                        listaDetratores.push({ origem, paciente: nomePaciente, nota: notaFinal, motivo: motivoNota });
+                        listaDetratores.push({ origem, paciente: prontuarioPaciente, nota: notaFinal, motivo: motivoNota });
                     }
                 }
 
@@ -1067,7 +1068,14 @@
                     const tagClass = d.origem === 'FAV' ? 'tag-fav' : 'tag-cer';
                     tbody.innerHTML += `<tr>
                         <td><span class="${tagClass}">${d.origem}</span></td>
-                        <td><strong>${d.paciente}</strong></td>
+                        <td>
+                            <strong style="display: block; color: var(--text-muted); font-size: 12px; font-weight: 500;">
+                                <i class="ph-fill ph-lock-key" style="vertical-align: middle;"></i> Identidade Preservada
+                            </strong>
+                            <span style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 2px; display: inline-block;">
+                                Prontuário: ${d.paciente}
+                            </span>
+                        </td>
                         <td class="note-bad">${d.nota}</td>
                         <td style="color:var(--text-dim); font-size: 13px; max-width: 400px; line-height: 1.4;"><i>"${d.motivo}"</i></td>
                     </tr>`;
