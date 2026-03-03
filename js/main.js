@@ -249,11 +249,15 @@ function setModule(mod) {
     const logoIcon = document.getElementById('logo-icon');
 
     if (mod === 'oftalmo') {
-        title.innerText = "FAV OFTALMOLOGIA";
+        title.innerHTML = "LINHA DE CUIDADO<br>DE CATARATA";
+        title.style.lineHeight = "1.1";
+        title.style.fontSize = "0.85rem";
         logoIcon.setAttribute('data-lucide', 'eye');
         logoIcon.style.color = '#10b981'; // Um tom esmeralda para diferenciar bem
     } else {
-        title.innerText = "FAV ANALYTICS";
+        title.innerHTML = "FAV ANALYTICS";
+        title.style.lineHeight = "normal";
+        title.style.fontSize = "1rem";
         logoIcon.setAttribute('data-lucide', 'database-zap');
         logoIcon.style.color = 'var(--accent)'; // O azul original
     }
@@ -275,7 +279,7 @@ function setModule(mod) {
     // 4. Renderiza tudo com os novos dados
     populateSectorFilter();
     renderApp();
-    showToast(mod === 'oftalmo' ? "Base: Oftalmologia" : "Base: Institucional", "wait");
+    showToast(mod === 'oftalmo' ? "Base: Linha de Cuidado de Catarata" : "Base: Institucional", "wait");
 }
 
 
