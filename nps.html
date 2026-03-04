@@ -4,249 +4,151 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FAV Intelligence | Executive Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Dashboard NPS Executivo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
     <link rel="stylesheet" href="css/nps.css">
 </head>
 
-<div id="tela-autenticacao" class="auth-container">
-    <div class="auth-box">
-        <h2>Acesso Restrito</h2>
-        <p>Insira o token do sistema para acessar o painel NPS.</p>
-        <input type="password" id="input-token" placeholder="Digite o token numérico"
-            onkeydown="if(event.key==='Enter') validarEEntrar()">
-        <button id="btn-login" onclick="validarEEntrar()">Acessar Painel</button>
-        <div id="msg-erro">Token inválido! Tente novamente.</div>
-    </div>
-</div>
+<body>
 
-<div id="conteudo-dashboard" style="display: none;">
-    <div id="loading-overlay" class="loading-overlay">
-        <div class="spinner-ring"></div>
-        <div class="loading-text">Processando Dados...</div>
+    <div id="tela-autenticacao" class="auth-container">
+        <div class="auth-box">
+            <h2>Acesso Restrito</h2>
+            <p>Insira o token do sistema para acessar o painel NPS.</p>
+            <input type="password" id="input-token" placeholder="Digite o token numérico"
+                onkeydown="if(event.key==='Enter') { event.preventDefault(); validarEEntrar(); }">
+            <button id="btn-login" onclick="validarEEntrar()">Acessar Painel</button>
+            <div id="msg-erro"></div>
+        </div>
     </div>
 
-    <!-- SIDEBAR -->
-    <nav class="sidebar">
-        <div class="brand" style="margin-bottom: 5px;">
-            <i class="ph-fill ph-smiley"></i>
-            FAV NPS
-        </div>
-        <div
-            style="font-size: 11px; color: var(--text-dim); margin-left: 40px; margin-bottom: 35px; letter-spacing: 0.5px; font-weight: 500;">
-            Net Promoter Score
+    <div id="conteudo-dashboard">
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="spinner"></div>
+            <div style="color: var(--text-dim); font-weight: 500; letter-spacing: 1px;">Sincronizando Dados...</div>
         </div>
 
-        <div class="nav-label">Insights</div>
-        <div class="nav-item active" onclick="switchTab('geral', this)">
-            <i class="ph ph-command"></i> Hub Institucional
-        </div>
-
-        <div class="nav-label">Unidades</div>
-        <div class="nav-item" onclick="switchTab('fav', this)">
-            <i class="ph ph-buildings"></i> FAV
-        </div>
-        <div class="nav-item" onclick="switchTab('cer', this)">
-            <i class="ph ph-wheelchair"></i> CER IV
-        </div>
-
-        <div class="btn-logout" onclick="sairDoPainel()">
-            <i class="ph ph-sign-out"></i> Sair / Trocar Token
-        </div>
-    </nav>
-
-    <!-- MAIN DASHBOARD -->
-    <main class="main-container">
-        <header class="topbar">
-            <div class="topbar-title" id="page-title">Carregando Painel...</div>
-            <div class="filtro-container">
-                <select id="filtro-mes" class="mes-filtro" onchange="aplicarFiltroMes()">
-                    <option value="todos">Carregando Filtros...</option>
-                </select>
-                <div class="topbar-meta">
-                    <i class="ph ph-arrows-clockwise"></i>
-                    <span id="hora-atualizacao">AGUARDANDO SYNC</span>
-                </div>
+        <aside class="sidebar">
+            <div class="brand"><i class="ph-fill ph-database"></i> Painel NPS</div>
+            <div class="nav-item active" id="btn-inst" onclick="mudarUnidade('INSTITUCIONAL')"><i
+                    class="ph ph-buildings"></i> Institucional</div>
+            <div class="nav-item" id="btn-fav" onclick="mudarUnidade('FAV')"><i class="ph ph-hospital"></i> FAV
             </div>
-        </header>
+            <div class="nav-item" id="btn-cer" onclick="mudarUnidade('CER')"><i class="ph ph-wheelchair"></i>CER IV
+            </div>
+            <div class="btn-logout" onclick="sairDoPainel()"><i class="ph ph-sign-out"></i> Sair</div>
+        </aside>
 
-        <div class="content">
+        <main class="main-area">
+            <header class="topbar">
+                <div style="display: flex; flex-direction: column;">
+                    <div class="topbar-title" id="titulo-unidade">Visão Geral - Institucional</div>
+                    <div style="display: flex; align-items: center; margin-top: 8px;">
+                        <span id="subtitulo-periodo"
+                            style="background: rgba(139, 92, 246, 0.2); border: 1px solid var(--brand-secondary); color: #fff; font-size: 14px; font-weight: 600; padding: 6px 14px; border-radius: 20px; box-shadow: 0 4px 10px rgba(139, 92, 246, 0.15);">
+                            <i class="ph-fill ph-calendar-blank" style="margin-right: 6px;"></i> Carregando período...
+                        </span>
+                    </div>
+                </div>
+                <div class="filters-area">
+                    <select id="filtro-mes" class="select-dark" onchange="aplicarFiltros()">
+                        <option value="todos">Todo o Período</option>
+                        <option value="1">Janeiro</option>
+                        <option value="2">Fevereiro</option>
+                        <option value="3">Março</option>
+                        <option value="4">Abril</option>
+                        <option value="5">Maio</option>
+                        <option value="6">Junho</option>
+                        <option value="7">Julho</option>
+                        <option value="8">Agosto</option>
+                        <option value="9">Setembro</option>
+                        <option value="10">Outubro</option>
+                        <option value="11">Novembro</option>
+                        <option value="12">Dezembro</option>
+                    </select>
+                    <button class="btn-ai" id="btn-gerar-ia" onclick="gerarInsightsIA()"><i
+                            class="ph-fill ph-magic-wand"></i> Gerar Auditoria IA</button>
+                </div>
+            </header>
 
-            <!-- TAB: GERAL -->
-            <div id="tab-geral" class="tab-pane active">
-
-                <!-- KPIs -->
+            <div class="content">
                 <div class="kpi-grid">
                     <div class="kpi-card">
-                        <div class="kpi-header">
-                            <span class="kpi-title">Net Promoter Score <i class="ph ph-info"
-                                    style="cursor: help; color: var(--text-muted);"
-                                    title="Fórmula: (% Promotores) - (% Detratores). Notas de 9 ou 10 são Promotores, Notas de 0 a 6 são Detratores."></i></span>
-                        </div>
-                        <div class="kpi-value" id="kpi-nps-global">--</div>
-                        <div class="kpi-trend trend-neutral">Índice Global Institucional</div>
+                        <div class="kpi-title">Score Final (NPS) <i class="ph ph-info"
+                                title="Cálculo: % Promotores - % Detratores." style="cursor:help;"></i></div>
+                        <div class="kpi-value text-primary" id="kpi-nps">--</div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-header">
-                            <span class="kpi-title">Volume Amostral <i class="ph ph-info"
-                                    style="cursor: help; color: var(--text-muted);"
-                                    title="Número total e absoluto de pesquisas recebidas com avaliações de nota (ignorando campos vazios de nota)."></i></span>
-                        </div>
-                        <div class="kpi-value" id="kpi-total">--</div>
-                        <div class="kpi-trend trend-neutral">Pesquisas Válidas</div>
+                        <div class="kpi-title">Promotores (9-10) <i class="ph ph-info"
+                                title="Pacientes leais que recomendariam a instituição." style="cursor:help;"></i></div>
+                        <div class="kpi-value text-success" id="kpi-promotores">--</div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-header">
-                            <span class="kpi-title">Excelência (Elogios) <i class="ph ph-info"
-                                    style="cursor: help; color: var(--text-muted);"
-                                    title="Contagem absoluta de formulários em que os pacientes preencheram textualmente um elogio para a instituição ou profissionais."></i></span>
-                        </div>
-                        <div class="kpi-value" id="kpi-elogios" style="color: var(--success);">--</div>
-                        <div class="kpi-trend trend-up">Profissionais Destacados</div>
+                        <div class="kpi-title">Neutros (7-8) <i class="ph ph-info"
+                                title="Pacientes satisfeitos, mas indiferentes." style="cursor:help;"></i></div>
+                        <div class="kpi-value text-warning" id="kpi-neutros">--</div>
                     </div>
                     <div class="kpi-card">
-                        <div class="kpi-header">
-                            <span class="kpi-title">Alerta Crítico <i class="ph ph-info"
-                                    style="cursor: help; color: var(--text-muted);"
-                                    title="Soma total de pacientes que classificaram a experiência com nota entre 0 e 6 (Detratores), exigindo atenção e possível tratativa."></i></span>
-                        </div>
-                        <div class="kpi-value" id="kpi-detratores" style="color: var(--danger);">--</div>
-                        <div class="kpi-trend trend-down">Detratores Registrados</div>
+                        <div class="kpi-title">Detratores (1-6) <i class="ph ph-info" title="Pacientes insatisfeitos."
+                                style="cursor:help;"></i></div>
+                        <div class="kpi-value text-danger" id="kpi-detratores">--</div>
                     </div>
                 </div>
 
-                <div style="display: flex; justify-content: space-between; align-items: flex-end;">
-                    <button id="btn-gerar-ia" class="btn-ia" onclick="solicitarAnaliseIA()">
-                        <i class="ph-fill ph-magic-wand"></i> Gerar Insights com IA
-                    </button>
-                </div>
-
-                <div class="middle-grid" style="grid-template-columns: 1fr 1fr; margin-bottom: 20px;">
-                    <div class="chart-card" style="border-left: 3px solid var(--success);">
-                        <div class="card-header" style="margin-bottom: 14px;">
-                            <span style="display: flex; align-items: center; gap: 8px;">
-                                <i class="ph-fill ph-sparkle" style="color: var(--success);"></i>
-                                Top 3 Pontos de Excelência (Análise IA)
-                            </span>
-                        </div>
-                        <ul id="ia-elogios" class="ia-list">
-                            <li style="list-style: none;">
-                                <div class="spinner-ring"
-                                    style="width:14px; height:14px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:8px; margin-bottom:0;">
-                                </div> Aguardando processamento semântico...
-                            </li>
-                        </ul>
-                    </div>
-
-                    <div class="chart-card" style="border-left: 3px solid var(--danger);">
-                        <div class="card-header" style="margin-bottom: 14px;">
-                            <span style="display: flex; align-items: center; gap: 8px;">
-                                <i class="ph-fill ph-warning-circle" style="color: var(--danger);"></i>
-                                Top 3 Alertas Críticos (Análise IA)
-                            </span>
-                        </div>
-                        <ul id="ia-criticas" class="ia-list">
-                            <li style="list-style: none;">
-                                <div class="spinner-ring"
-                                    style="width:14px; height:14px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:8px; margin-bottom:0;">
-                                </div> Aguardando processamento semântico...
-                            </li>
-                        </ul>
-                    </div>
-                </div>
-
-                <!-- MIDDLE GRID: NPS & DETRATORES LADO A LADO -->
                 <div class="middle-grid">
-                    <!-- GRAFICO NPS (MUDAMOS DE LUGAR) -->
                     <div class="chart-card">
-                        <div class="card-header">Composição da Experiência</div>
-                        <div class="chart-wrapper">
-                            <canvas id="chartNPS"></canvas>
-                        </div>
+                        <div class="card-header">Evolução do Volume e Score</div>
+                        <div class="chart-wrapper"><canvas id="chartEvolucao"></canvas></div>
                     </div>
-
-                    <!-- TABELA DETRATORES -->
                     <div class="chart-card">
-                        <div class="card-header">Raio-X de Contingência (Últimos Detratores)</div>
-                        <div class="table-container">
-                            <table>
-                                <thead>
-                                    <tr>
-                                        <th>Polo</th>
-                                        <th>Paciente / Registro</th>
-                                        <th>Nota</th>
-                                        <th>Observação / Motivo</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="tabela-detratores">
-                                    <tr>
-                                        <td colspan="4" style="text-align: center; color: var(--text-muted);">Aguardando
-                                            dados...</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                        <div class="card-header">Distribuição de Avaliações</div>
+                        <div class="chart-wrapper"><canvas id="chartDistribuicao"></canvas></div>
+                    </div>
+                </div>
+
+                <div class="ai-card" style="margin-bottom: 24px;">
+                    <div class="card-header"
+                        style="color: var(--brand-secondary); display: flex; justify-content: space-between;">
+                        <span><i class="ph-fill ph-sparkle"></i> Insights Qualitativos (IA)</span>
+                        <span id="ia-status-mes"
+                            style="font-size: 12px; color: var(--text-dim); font-weight: 400;">Aguardando
+                            geração...</span>
+                    </div>
+                    <div class="ai-grid">
+                        <div>
+                            <div
+                                style="color: var(--success); font-weight: 600; font-size: 14px; text-transform: uppercase;">
+                                Principais Elogios</div>
+                            <ul class="ai-list" id="lista-elogios">
+                                <li>Clique em "Gerar Auditoria IA" no topo da página.</li>
+                            </ul>
+                        </div>
+                        <div>
+                            <div
+                                style="color: var(--danger); font-weight: 600; font-size: 14px; text-transform: uppercase;">
+                                Oportunidades de Melhoria</div>
+                            <ul class="ai-list" id="lista-criticas">
+                                <li>A IA analisará os feedbacks do mês selecionado.</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
 
-                <!-- PANORAMA GRID: EVOLUÇÃO TEMPORAL (NOVA LÓGICA E POSIÇÃO) -->
-                <div class="panorama-grid">
-                    <div class="chart-card">
-                        <div class="card-header">Curva de Tração Institucional (Evolução de Pesquisas por Mês)</div>
-                        <div class="chart-wrapper" style="height: 300px;">
-                            <canvas id="chartEvolucao"></canvas>
-                        </div>
+                <div class="chart-card" style="border-color: var(--border-glass);">
+                    <div class="card-header" style="color: var(--text-main);"><i class="ph-fill ph-chats"></i> Relatos
+                        Anônimos Coletados</div>
+                    <div id="feedbacks-container" style="max-height: 350px; overflow-y: auto; padding-right: 10px;">
+                        <p style="color: var(--text-dim); padding: 10px;">Carregando relatos...</p>
                     </div>
                 </div>
 
             </div>
-
-            <!-- TAB: FAV -->
-            <div id="tab-fav" class="tab-pane">
-                <div class="middle-grid">
-                    <div class="kpi-card">
-                        <div class="kpi-title" style="margin-bottom: 12px;">NPS FAV <i class="ph ph-info"
-                                style="margin-left: 6px; cursor: help; color: var(--text-muted);"
-                                title="Net Promoter Score apenas da unidade Hospital FAV. (% Promotores - % Detratores)"></i>
-                        </div>
-                        <div class="kpi-value" id="kpi-nps-fav">--</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-title" style="margin-bottom: 12px;">Amostragem FAV <i class="ph ph-info"
-                                style="margin-left: 6px; cursor: help; color: var(--text-muted);"
-                                title="Total absoluto de avaliações coletadas pela unidade Hospital FAV."></i></div>
-                        <div class="kpi-value" id="kpi-total-fav">--</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- TAB: CER -->
-            <div id="tab-cer" class="tab-pane">
-                <div class="middle-grid">
-                    <div class="kpi-card">
-                        <div class="kpi-title" style="margin-bottom: 12px;">NPS CER IV <i class="ph ph-info"
-                                style="margin-left: 6px; cursor: help; color: var(--text-muted);"
-                                title="Net Promoter Score apenas das vias de atendimento do CER IV. (% Promotores - % Detratores)"></i>
-                        </div>
-                        <div class="kpi-value" id="kpi-nps-cer">--</div>
-                    </div>
-                    <div class="kpi-card">
-                        <div class="kpi-title" style="margin-bottom: 12px;">Amostragem CER <i class="ph ph-info"
-                                style="margin-left: 6px; cursor: help; color: var(--text-muted);"
-                                title="Total absoluto de avaliações coletadas pela unidade CER IV."></i></div>
-                        <div class="kpi-value" id="kpi-total-cer">--</div>
-                    </div>
-                </div>
-            </div>
-
-        </div>
-    </main>
+        </main>
+    </div>
 
     <script src="js/nps.js"></script>
-</div> <!-- fim conteudo-dashboard -->
 </body>
 
 </html>

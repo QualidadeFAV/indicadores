@@ -1,531 +1,374 @@
-Chart.defaults.font.family = "'Outfit', sans-serif";
-        Chart.defaults.color = '#94a3b8';
-        Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
-        Chart.defaults.plugins.tooltip.backgroundColor = 'rgba(15, 23, 42, 0.9)';
-        Chart.defaults.plugins.tooltip.titleColor = '#f8fafc';
-        Chart.defaults.plugins.tooltip.bodyColor = '#cbd5e1';
+try {
+    Chart.defaults.font.family = "'Outfit', sans-serif";
+    Chart.defaults.color = '#94a3b8';
+    if (Chart.defaults.scale) Chart.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.05)';
+} catch (e) {
+    console.warn("Aviso ChartJS no carregamento:", e);
+}
 
-        // --- LIGAÇÃO À API ---
-        const API_URL = "https://script.google.com/macros/s/AKfycbzr0go-Z0nSoGO1IWtnVHbbmHiwCJqAGIyoRAUTYrKJhIS7MP9BekAbXN8ZlBKgtNTi/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzr0go-Z0nSoGO1IWtnVHbbmHiwCJqAGIyoRAUTYrKJhIS7MP9BekAbXN8ZlBKgtNTi/exec";
 
-        let chartEvolucao, chartNPS;
-        let rawDataFav = [];
-        let rawDataCer = [];
-        let comentariosParaIAGlobal = []; // Adicione esta linha
+let chartEvolucao, chartDistribuicao;
+let rawDataFav = [];
+let rawDataCer = [];
+let unidadeAtual = 'INSTITUCIONAL'; // Inicia mostrando tudo
+let comentariosAtuaisParaIA = [];
 
-        function extrairDataTratada(linha) {
-            const chaves = Object.keys(linha);
+function animarContador(id, valorFinal, prefixo = '') {
+    const elemento = document.getElementById(id);
+    if (!elemento) return;
 
-            // Prioridade MÁXIMA para 'Data do Registro'
-            const chaveData = chaves.find(k => {
-                const kLimpo = k.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                return kLimpo === 'DATA DO REGISTRO' || kLimpo === 'CARIMBO DE DATA/HORA' || kLimpo === 'TIMESTAMP';
-            }) || chaves.find(k => {
-                // Secundário (Rede de pesca): apenas se não achar a prioritária
-                const kLimpo = k.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                return kLimpo.includes('registro') || kLimpo.includes('carimbo');
-            });
+    if (elemento.temporizadorContador) {
+        cancelAnimationFrame(elemento.temporizadorContador);
+    }
 
-            if (chaveData && linha[chaveData]) {
-                let dtRaw = linha[chaveData];
-                let dataReal = new Date(dtRaw);
+    if (isNaN(valorFinal) || valorFinal === '--' || valorFinal === null) {
+        elemento.innerText = valorFinal;
+        return;
+    }
 
-                if (isNaN(dataReal) && typeof dtRaw === 'string') {
-                    let partes = dtRaw.split(/[\/\-]/);
-                    if (partes.length >= 3) {
-                        let dia = parseInt(partes[0], 10);
-                        let mes = parseInt(partes[1], 10) - 1;
-                        let ano = parseInt(partes[2].split(' ')[0], 10);
-                        if (ano < 100) ano += 2000;
-                        dataReal = new Date(ano, mes, dia);
-                    }
-                }
-                if (!isNaN(dataReal)) return dataReal;
-            }
-            return null;
+    let inicio = 0;
+    let startTime = null;
+    const duration = 1500; // ~1.5 segundos para sincronizar com os gráficos
+
+    const step = (timestamp) => {
+        if (!startTime) startTime = timestamp;
+        const progress = Math.min((timestamp - startTime) / duration, 1);
+
+        // Efeito easing: mais rápido no começo e lento no fim (easeOutQuart)
+        const easeOut = 1 - Math.pow(1 - progress, 4);
+        const atual = Math.floor(inicio + (valorFinal - inicio) * easeOut);
+
+        elemento.innerText = prefixo + atual;
+
+        if (progress < 1) {
+            elemento.temporizadorContador = requestAnimationFrame(step);
+        } else {
+            elemento.innerText = prefixo + valorFinal;
+        }
+    };
+
+    elemento.temporizadorContador = requestAnimationFrame(step);
+}
+
+// ==========================================
+// 1. INICIALIZAÇÃO E AUTENTICAÇÃO BLINDADA
+// ==========================================
+// Carrega de forma mais segura após o DOM real sem matar outros possíveis loads
+document.addEventListener('DOMContentLoaded', () => {
+    // Definir o filtro de meses com o mês atual da máquina (1 a 12)
+    const filtroMes = document.getElementById('filtro-mes');
+    if (filtroMes) {
+        const dataAtual = new Date();
+        const mesAtual = (dataAtual.getMonth() + 1).toString();
+        filtroMes.value = mesAtual;
+    }
+
+    // Apenas define o estado inicial: Login visível, Dashboard oculto.
+    const telaAutenticacao = document.getElementById('tela-autenticacao');
+    const conteudoDashboard = document.getElementById('conteudo-dashboard');
+    if (telaAutenticacao && conteudoDashboard) {
+        telaAutenticacao.style.display = 'flex';
+        conteudoDashboard.style.display = 'none';
+    }
+});
+
+function validarEEntrar() {
+    console.log("Iniciando validação do token...");
+    try {
+        const token = document.getElementById('input-token').value;
+        if (!token) return mostrarErro("Digite o token numérico.");
+
+        document.getElementById('msg-erro').style.display = 'none';
+        document.getElementById('btn-login').innerText = 'Validando...';
+
+        carregarDados(token);
+    } catch (err) {
+        console.error("Erro no clique do botâo de login:", err);
+        mostrarErro("Falha no login da página. Verifique a conexão.");
+    }
+}
+
+async function carregarDados(token) {
+    if (!token) return;
+    try {
+        console.log("Enviando requisição ao banco/api...");
+        const fetchUrl = `${API_URL}?action=nps_data&token=${encodeURIComponent(token)}`;
+        const resposta = await fetch(fetchUrl);
+        const dados = await resposta.json();
+
+        if (dados.erro || dados.error) {
+            console.error("Retorno de erro do banco de dados:", dados.erro || dados.error);
+            mostrarErro(dados.erro || dados.error);
+            return;
         }
 
-        function prepararFiltrosEIniciar() {
-            let mesesMap = new Map();
+        // LIBERAÇÃO DA TELA ANTES DO PROCESSAMENTO
+        localStorage.setItem('token_nps', token);
+        document.getElementById('tela-autenticacao').style.display = 'none';
+        document.getElementById('conteudo-dashboard').style.display = 'flex';
 
-            const processarFiltro = (linha) => {
-                let d = extrairDataTratada(linha);
-                if (d) {
-                    let kStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                    const mesesLista = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-                    let label = `${mesesLista[d.getMonth()]} ${d.getFullYear()}`;
-                    mesesMap.set(kStr, label);
-                }
-            };
+        rawDataFav = dados.fav || [];
+        rawDataCer = dados.cer || [];
 
-            rawDataFav.forEach(processarFiltro);
-            rawDataCer.forEach(processarFiltro);
+        // TIMEOUT DE SEGURANÇA: Dá tempo mais longo para o navegador aplicar
+        // os estilos de "flex" e garantir a animação perfeita dos gráficos
+        setTimeout(() => {
+            aplicarFiltros();
+        }, 300);
 
-            // Ordena os meses do mais novo pro mais velho
-            let asArray = Array.from(mesesMap.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+    } catch (err) {
+        mostrarErro("Erro ao validar token.");
+    }
+}
 
-            const select = document.getElementById('filtro-mes');
-            select.innerHTML = "";
+function mostrarErro(msg) {
+    const div = document.getElementById('msg-erro');
+    div.innerText = msg; div.style.display = 'block';
+    document.getElementById('btn-login').innerText = 'Acessar Painel';
+}
 
-            asArray.forEach(([valor, texto]) => {
-                select.innerHTML += `<option value="${valor}">${texto}</option>`;
-            });
+function limparSessao() {
+    localStorage.removeItem('token_nps');
+    document.getElementById('tela-autenticacao').style.display = 'flex';
+    document.getElementById('conteudo-dashboard').style.display = 'none';
+    document.getElementById('input-token').value = '';
+    document.getElementById('btn-login').innerText = 'Acessar Painel';
+}
 
-            // Adiciona a opção "Ver Tudo" no final
-            select.innerHTML += `<option value="todos">Histórico Completo (Tudo)</option>`;
+function sairDoPainel() { limparSessao(); }
 
-            // Por padrão já nasce selecionada a primeira (Mês Mais Recente)
-            if (asArray.length > 0) {
-                select.value = asArray[0][0];
-            }
+// ==========================================
+// 2. LÓGICA DE DADOS E FILTROS
+// ==========================================
+function mudarUnidade(unidade) {
+    unidadeAtual = unidade;
+    document.getElementById('titulo-unidade').innerText = `Visão Geral - ${unidade === 'INSTITUCIONAL' ? 'Institucional' : unidade}`;
 
-            aplicarFiltroMes(); // Roda a métrica
+    // Atualiza botões
+    document.getElementById('btn-inst').classList.toggle('active', unidade === 'INSTITUCIONAL');
+    document.getElementById('btn-fav').classList.toggle('active', unidade === 'FAV');
+    document.getElementById('btn-cer').classList.toggle('active', unidade === 'CER');
+
+    aplicarFiltros();
+}
+
+function extrairData(linha) {
+    const chaves = Object.keys(linha);
+    const chaveData = chaves.find(k => k.toUpperCase().includes('DATA') || k.toUpperCase().includes('CARIMBO'));
+    if (!chaveData) return null;
+    return new Date(linha[chaveData]);
+}
+
+function extrairNotaNPS(linha) {
+    const chaves = Object.keys(linha);
+    const chaveNota = chaves.find(k => k.includes('0 a 10') || k.toUpperCase().includes('NPS') || k.toUpperCase().includes('RECOMENDA'));
+    if (!chaveNota) return null;
+    return parseInt(linha[chaveNota]);
+}
+
+// Localiza a coluna de Prontuário/Atendimento
+function extrairProntuario(linha) {
+    // Agora o backend já manda mastigado como PRONTUARIO_ID
+    return linha["PRONTUARIO_ID"] || 'Não identificado';
+}
+
+function aplicarFiltros() {
+    let baseDados = [];
+    if (unidadeAtual === 'FAV') baseDados = rawDataFav;
+    else if (unidadeAtual === 'CER') baseDados = rawDataCer;
+    else baseDados = [...rawDataFav, ...rawDataCer]; // Unifica Institucional
+
+    const mesSelecionado = document.getElementById('filtro-mes').value;
+    const boxFeedbacks = document.getElementById('feedbacks-container');
+    if (boxFeedbacks) boxFeedbacks.innerHTML = '';
+
+    let promotores = 0, neutros = 0, detratores = 0;
+    let historicoDias = {};
+    comentariosAtuaisParaIA = [];
+
+    baseDados.forEach(linha => {
+        const dataStr = extrairData(linha);
+        if (!dataStr) return;
+        if (mesSelecionado !== 'todos' && (dataStr.getMonth() + 1).toString() !== mesSelecionado) return;
+
+        const nota = extrairNotaNPS(linha);
+        if (nota !== null && !isNaN(nota)) {
+            if (nota >= 9) promotores++;
+            else if (nota >= 7) neutros++;
+            else detratores++;
         }
 
-        function aplicarFiltroMes() {
-            const selecao = document.getElementById('filtro-mes').value;
-            let finalFav = rawDataFav;
-            let finalCer = rawDataCer;
+        const diaMes = `${String(dataStr.getDate()).padStart(2, '0')}/${String(dataStr.getMonth() + 1).padStart(2, '0')}`;
+        historicoDias[diaMes] = (historicoDias[diaMes] || 0) + 1;
 
-            // Se o usuário selecionou um mês específico, nós "filtramos" os dados antes de mandar pro cálculo
-            if (selecao !== 'todos') {
-                const passaNoCorte = (linha) => {
-                    let d = extrairDataTratada(linha);
-                    if (!d) return false;
-                    let kStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-                    return kStr === selecao;
+        // IA e Relatos (Filtro Detratores 0-6)
+        const textos = [linha["IA_TEXTO_1"], linha["IA_TEXTO_2"]];
+        textos.forEach(txt => {
+            if (txt && txt.length > 5 && txt.toLowerCase() !== "ok" && txt.toLowerCase() !== "nada" && txt.toLowerCase() !== "não") {
+                comentariosAtuaisParaIA.push(txt);
+                if (nota !== null && nota <= 6) { // Regra do Detrator
+                    boxFeedbacks.innerHTML += `
+                        <div class="feedback-item" style="border-left: 4px solid var(--danger); margin-bottom: 15px; padding: 15px; background: rgba(239, 68, 68, 0.05); border-radius: 8px; border: 1px solid var(--border-glass);">
+                            <div style="display: flex; justify-content: space-between; color: var(--danger); font-weight: bold; font-size: 13px; margin-bottom: 10px; background: rgba(239, 68, 68, 0.1); padding: 8px 12px; border-radius: 6px;">
+                                <span><i class="ph-fill ph-warning-circle"></i> PRONTUÁRIO: ${linha["PRONTUARIO_ID"] || '---'}</span>
+                                <span>NOTA NPS: ${nota}</span>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; font-weight: 600;">Data da Avaliação: ${diaMes}</div>
+                            <div style="font-size: 14px; color: var(--text-main); line-height: 1.5;">"${txt}"</div>
+                        </div>`;
                 }
-                finalFav = rawDataFav.filter(passaNoCorte);
-                finalCer = rawDataCer.filter(passaNoCorte);
             }
+        });
+    });
 
-            // Avisa no título dos cards de IA qual mês estamos lendo
-            const mesNomeado = selecao === 'todos' ? 'Período Completo' : document.querySelector(`#filtro-mes option[value="${selecao}"]`).innerText;
-            document.querySelector('.chart-card[style*="var(--success)"] .card-header span').innerHTML = `<i class="ph-fill ph-sparkle" style="color: var(--success);"></i> Top 3 Pontos de Excelência (${mesNomeado})`;
-            document.querySelector('.chart-card[style*="var(--danger)"] .card-header span').innerHTML = `<i class="ph-fill ph-warning-circle" style="color: var(--danger);"></i> Top 3 Alertas Críticos (${mesNomeado})`;
+    if (boxFeedbacks && boxFeedbacks.innerHTML === '') {
+        boxFeedbacks.innerHTML = '<p style="color: var(--text-dim); padding: 10px;">Nenhum relato escrito neste período.</p>';
+    }
 
-            // Agora envia para a processarMetricas apenas a fatia de dados daquele mês!
-            processarMetricas(finalFav, finalCer);
-        }
+    const total = promotores + neutros + detratores;
+    const npsFinal = total > 0 ? Math.round(((promotores - detratores) / total) * 100) : 0;
 
-        function switchTab(tabId, element) {
-            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-            element.classList.add('active');
-            document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
-            document.getElementById('tab-' + tabId).classList.add('active');
-            const titles = { 'geral': 'Hub Institucional', 'fav': 'Análise FAV', 'cer': 'Análise CER IV' };
-            document.getElementById('page-title').innerText = titles[tabId];
-        }
+    animarContador('kpi-nps', total > 0 ? npsFinal : '--');
+    animarContador('kpi-promotores', promotores);
+    animarContador('kpi-neutros', neutros);
+    animarContador('kpi-detratores', detratores);
 
-        async function carregarDados(mes = null, ano = null, tokenManual = null) {
-            document.getElementById('loading-overlay').classList.remove('hidden');
+    const nomesDosMeses = {
+        'todos': 'Todo o Período',
+        '1': 'Janeiro', '2': 'Fevereiro', '3': 'Março', '4': 'Abril',
+        '5': 'Maio', '6': 'Junho', '7': 'Julho', '8': 'Agosto',
+        '9': 'Setembro', '10': 'Outubro', '11': 'Novembro', '12': 'Dezembro'
+    };
 
-            const token = tokenManual || localStorage.getItem('token_nps');
+    const periodoTexto = mesSelecionado === 'todos' ? 'Todo o Período' : `Mês de ${nomesDosMeses[mesSelecionado]}`;
 
-            try {
-                // Comunicação via API (GET)
-                const res = await fetch(`${API_URL}?token=${token}&action=nps_data`);
-                const dadosBanco = await res.json();
+    const subtituloEl = document.getElementById('subtitulo-periodo');
+    if (subtituloEl) {
+        subtituloEl.innerHTML = `<i class="ph-fill ph-calendar-blank" style="margin-right: 6px;"></i> Período Selecionado: ${periodoTexto}`;
+    }
 
-                // Verificação de erro vindo da API
-                if (dadosBanco.erro) {
-                    mostrarErro(dadosBanco.erro);
-                    limparSessao();
-                    return;
-                }
+    renderizarGraficos(promotores, neutros, detratores, Object.keys(historicoDias).sort(), Object.values(historicoDias));
 
-                if (dadosBanco.result === "error") {
-                    mostrarErro(dadosBanco.error || "Acesso negado");
-                    limparSessao();
-                    return;
-                }
+    document.getElementById('ia-status-mes').innerText = mesSelecionado === 'todos' ? "Período: Geral" : `Mês Filtrado: ${nomesDosMeses[mesSelecionado]}`;
+}
 
-                // Se chegou aqui, o token é válido!
-                localStorage.setItem('token_nps', token);
-                document.getElementById('tela-autenticacao').style.display = 'none';
-                document.getElementById('conteudo-dashboard').style.display = 'block';
-
-                rawDataFav = dadosBanco.fav || [];
-                rawDataCer = dadosBanco.cer || [];
-                prepararFiltrosEIniciar();
-
-                const hora = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-                document.getElementById('hora-atualizacao').innerHTML = `<strong style="color:var(--success)">SYNC OK: ${hora}</strong>`;
-                document.getElementById('loading-overlay').classList.add('hidden');
-                document.getElementById('page-title').innerText = "Hub Institucional";
-            } catch (erro) {
-                console.error(erro);
-                document.getElementById('hora-atualizacao').innerHTML = `<strong style="color:var(--danger)">FALHA DE SYNC</strong>`;
-                document.getElementById('loading-overlay').classList.add('hidden');
-                if (tokenManual) mostrarErro("Erro de conexão com o servidor.");
-            }
-        }
-
-        function processarMetricas(dadosFav, dadosCer) {
-            const totalFav = dadosFav.length;
-            const totalCer = dadosCer.length;
-            const totalRespostas = totalFav + totalCer;
-
-            let promotores = 0, passivos = 0, detratores = 0;
-            let promotoresFav = 0, passivosFav = 0, detratoresFav = 0;
-            let promotoresCer = 0, passivosCer = 0, detratoresCer = 0;
-            let listaDetratores = [];
-            let todosOsComentariosParaIA = [];
-            let totalElogios = 0;
-
-            // --- NOVA LÓGICA: Linha do Tempo (Agrupando por Mês/Ano real E Ordenação) ---
-            let timelineFAV = {};
-            let timelineCER = {};
-
-            const registrarData = (linha, origem) => {
-                let dataReal = extrairDataTratada(linha);
-
-                let chaveMes = 'Sem Data'; // Padrão
-                let chaveOrdenacao = '9999-99'; // Chave para jogar os 'Sem Data' pro final
-
-                if (dataReal) {
-                    const dia = String(dataReal.getDate()).padStart(2, '0');
-                    const mesStr = String(dataReal.getMonth() + 1).padStart(2, '0');
-
-                    // Rotulo visível (ex: "15/02")
-                    chaveMes = `${dia}/${mesStr}`;
-                    // Ordem Cronológica para o Gráfico (ex: "2024-02-15")
-                    chaveOrdenacao = `${dataReal.getFullYear()}-${mesStr}-${dia}`;
-                }
-
-                // Inicializa se não existir
-                if (!timelineFAV[chaveOrdenacao]) timelineFAV[chaveOrdenacao] = { rotulo: chaveMes, count: 0 };
-                if (!timelineCER[chaveOrdenacao]) timelineCER[chaveOrdenacao] = { rotulo: chaveMes, count: 0 };
-
-                if (origem === 'FAV') {
-                    timelineFAV[chaveOrdenacao].count++;
-                } else {
-                    timelineCER[chaveOrdenacao].count++;
-                }
-            };
-
-            function analisarPesquisa(linha, origem) {
-                if (!linha || typeof linha !== 'object') return;
-
-                // Registra mês para evolução
-                registrarData(linha, origem);
-
-                let valorNps = linha['NPS'];
-                const limparTexto = (t) => t.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-
-                if (valorNps === undefined) {
-                    const chaves = Object.keys(linha);
-                    const chaveEncontrada = chaves.find(k => {
-                        const K = limparTexto(k);
-                        return K.includes('NPS') || K.includes('SATISFA') || K.includes('NOTA') || K.includes('RECOMEND') || K.includes('ESCALA');
-                    });
-                    if (chaveEncontrada) valorNps = linha[chaveEncontrada];
-                }
-
-                const chaves = Object.keys(linha);
-                const getVal = (termos) => {
-                    const k = chaves.find(key => termos.some(t => key.toUpperCase().includes(t)));
-                    return k ? linha[k] : "";
-                };
-
-                // Busca a coluna do prontuário (cobre as variações com e sem acento)
-                const prontuarioPaciente = getVal(['PRONTUÁRIO', 'PRONTUARIO', 'PRONT']) || "Não Informado";
-
-                // --- SISTEMA ROBUSTO DE BUSCA DE MOTIVO/SUGESTÃO ---
-                let valorCapturado = "";
-
-                // 1. Array de termos desejados, por ordem de prioridade
-                const termosMotivo = [
-                    'JUSTIFICATIVA',
-                    'SUGESTOES/DETALHES',
-                    'SUGESTAO/DETALHE',
-                    'SUGESTAO',
-                    'DETALHE',
-                    'MOTIVO',
-                    'COMENTARIO',
-                    'OBSERV',
-                    'RELATO',
-                    'PORQUE'
-                ];
-
-                // 2. Procura em todas as chaves da linha qual bate melhor (ordem cronológica de prioridade)
-                for (let termo of termosMotivo) {
-                    let chaveDestaVez = chaves.find(k => {
-                        let kLimpo = k.trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-                        return kLimpo.includes(termo);
-                    });
-
-                    // 3. Se achou a coluna E o paciente de fato escreveu algo nela (não deixou vazio)
-                    if (chaveDestaVez && linha[chaveDestaVez]) {
-                        let textoResposta = linha[chaveDestaVez].toString().trim();
-                        // 4. Critério anti-falso-positivo: se ele só digitou um "-" ou escreveu "ok", descarte e procure a próxima
-                        if (textoResposta !== "" && textoResposta.length > 2) {
-                            valorCapturado = textoResposta;
-                            break; // Achou? Para o loop e salva.
-                        }
-                    }
-                }
-
-                const motivoNota = valorCapturado ? valorCapturado : "Sem detalhes/sugestões registradas.";
-
-                // --- CAPTURA DINÂMICA TRATADA PELO BACKEND ---
-                let txt1 = linha["IA_TEXTO_1"] ? linha["IA_TEXTO_1"].toString().trim() : "";
-                let txt2 = linha["IA_TEXTO_2"] ? linha["IA_TEXTO_2"].toString().trim() : "";
-
-                if (txt1.length > 5 && txt1.toLowerCase() !== "ok" && txt1.toLowerCase() !== "nada") {
-                    todosOsComentariosParaIA.push(txt1);
-                }
-                if (txt2.length > 5 && txt2.toLowerCase() !== "ok" && txt2.toLowerCase() !== "nada") {
-                    todosOsComentariosParaIA.push(txt2);
-                }
-                // ---------------------------------------------
-
-                const destaque = getVal(['DESTAQUE', 'PROFISSIONAL', 'ELOGIO']);
-
-                let notaFinal = NaN;
-                if (valorNps !== null && valorNps !== undefined) {
-                    if (typeof valorNps === 'number') notaFinal = valorNps;
-                    else {
-                        const match = valorNps.toString().match(/\d+/);
-                        if (match) notaFinal = parseInt(match[0], 10);
-                    }
-                }
-
-                if (!isNaN(notaFinal) && notaFinal >= 0 && notaFinal <= 10) {
-                    if (notaFinal >= 9) {
-                        promotores++;
-                        if (origem === 'FAV') promotoresFav++; else promotoresCer++;
-                    } else if (notaFinal >= 7) {
-                        passivos++;
-                        if (origem === 'FAV') passivosFav++; else passivosCer++;
-                    } else {
-                        detratores++;
-                        if (origem === 'FAV') detratoresFav++; else detratoresCer++;
-                        listaDetratores.push({ origem, paciente: prontuarioPaciente, nota: notaFinal, motivo: motivoNota });
-                    }
-                }
-
-                if (destaque && destaque.toString().trim().length > 2) totalElogios++;
-            }
-
-            dadosFav.forEach(linha => analisarPesquisa(linha, "FAV"));
-            dadosCer.forEach(linha => analisarPesquisa(linha, "CER"));
-
-            const calcNPS = (p, pa, d) => { const total = p + pa + d; return total === 0 ? 0 : Math.round(((p - d) / total) * 100); };
-            const animar = (id, valor) => { const el = document.getElementById(id); if (el) el.innerText = valor; };
-
-            animar('kpi-nps-global', calcNPS(promotores, passivos, detratores));
-            animar('kpi-total', totalRespostas);
-            animar('kpi-elogios', totalElogios);
-            animar('kpi-detratores', detratores);
-            animar('kpi-nps-fav', calcNPS(promotoresFav, passivosFav, detratoresFav));
-            animar('kpi-total-fav', totalFav);
-            animar('kpi-nps-cer', calcNPS(promotoresCer, passivosCer, detratoresCer));
-            animar('kpi-total-cer', totalCer);
-
-            // Atualiza Tabela (Ultimos 5)
-            const tbody = document.getElementById('tabela-detratores');
-            tbody.innerHTML = "";
-            if (listaDetratores.length === 0) {
-                tbody.innerHTML = "<tr><td colspan='4' style='text-align:center; padding:20px; color:var(--success);'>Nenhum alerta vermelho.</td></tr>";
-            } else {
-                listaDetratores.slice(-6).reverse().forEach(d => {
-                    const tagClass = d.origem === 'FAV' ? 'tag-fav' : 'tag-cer';
-                    tbody.innerHTML += `<tr>
-                        <td><span class="${tagClass}">${d.origem}</span></td>
-                        <td>
-                            <strong style="display: block; color: var(--text-muted); font-size: 12px; font-weight: 500;">
-                                <i class="ph-fill ph-lock-key" style="vertical-align: middle;"></i> Identidade Preservada
-                            </strong>
-                            <span style="font-size: 14px; font-weight: 600; color: var(--text-main); margin-top: 2px; display: inline-block;">
-                                Prontuário: ${d.paciente}
-                            </span>
-                        </td>
-                        <td class="note-bad">${d.nota}</td>
-                        <td style="color:var(--text-dim); font-size: 13px; max-width: 400px; line-height: 1.4;"><i>"${d.motivo}"</i></td>
-                    </tr>`;
-                });
-            }
-
-            // ATUALIZA GRÁFICO NPS (REAL)
-            if (chartNPS) {
-                const temDados = promotores > 0 || passivos > 0 || detratores > 0;
-                chartNPS.data.datasets[0].data = temDados ? [promotores, passivos, detratores] : [0, 1, 0];
-                chartNPS.data.datasets[0].backgroundColor = temDados ? ['#10b981', '#475569', '#f43f5e'] : ['#1e293b', '#1e293b', '#1e293b'];
-                chartNPS.update();
-            }
-
-            // ATUALIZA GRÁFICO EVOLUÇÃO (LINHA DO TEMPO REAL ORDENADA)
-            if (chartEvolucao) {
-                // Pega todas as chaves de ordenação e ordena cronologicamente
-                let chavesOrdenadas = Array.from(new Set([...Object.keys(timelineFAV), ...Object.keys(timelineCER)])).sort();
-
-                if (chavesOrdenadas.length === 0 || (chavesOrdenadas.length === 1 && chavesOrdenadas[0] === '9999-99')) {
-                    // Módulo fall-back caso não ache datas válidas
-                    chartEvolucao.data.labels = ['Amostra Única (Histórico sem Data)'];
-                    chartEvolucao.data.datasets[0].data = [totalFav];
-                    chartEvolucao.data.datasets[1].data = [totalCer];
-                } else {
-                    // Filtra o 'Sem Data' (9999-99) se ele não for o único dado, para não quebrar o visual da linha do tempo
-                    if (chavesOrdenadas.length > 1) {
-                        chavesOrdenadas = chavesOrdenadas.filter(k => k !== '9999-99');
-                    }
-
-                    // Extrai os rótulos bonitos (Ex: "Jan 24") na ordem correta
-                    chartEvolucao.data.labels = chavesOrdenadas.map(k => {
-                        return (timelineFAV[k] ? timelineFAV[k].rotulo : timelineCER[k].rotulo) || 'Desc';
-                    });
-
-                    // Preenche os pontos do gráfico na mesma ordem
-                    chartEvolucao.data.datasets[0].data = chavesOrdenadas.map(k => timelineFAV[k] ? timelineFAV[k].count : 0);
-                    chartEvolucao.data.datasets[1].data = chavesOrdenadas.map(k => timelineCER[k] ? timelineCER[k].count : 0);
-                }
-                chartEvolucao.update();
-            }
-
-            // --- PREPARAÇÃO DA IA (AGUARDANDO CLIQUE) ---
-            comentariosParaIAGlobal = todosOsComentariosParaIA; // Salva para o botão usar
-
-            const listaElogios = document.getElementById('ia-elogios');
-            const listaCriticas = document.getElementById('ia-criticas');
-            const btnIA = document.getElementById('btn-gerar-ia');
-
-            if (listaElogios && listaCriticas) {
-                listaElogios.innerHTML = '<li style="list-style: none; color: var(--text-muted);">Clique no botão acima para analisar os relatos.</li>';
-                listaCriticas.innerHTML = '<li style="list-style: none; color: var(--text-muted);">Clique no botão acima para analisar os relatos.</li>';
-            }
-
-            if (btnIA) {
-                btnIA.disabled = false;
-                btnIA.innerHTML = '<i class="ph-fill ph-magic-wand"></i> Gerar Insights com IA';
-            }
-        }
-
-        function solicitarAnaliseIA() {
-            const listaElogios = document.getElementById('ia-elogios');
-            const listaCriticas = document.getElementById('ia-criticas');
-            const btnIA = document.getElementById('btn-gerar-ia');
-
-            if (!comentariosParaIAGlobal || comentariosParaIAGlobal.length === 0) {
-                listaElogios.innerHTML = '<li style="list-style:none;">Sem volume de texto suficiente neste período.</li>';
-                listaCriticas.innerHTML = '<li style="list-style:none;">Sem volume de texto suficiente neste período.</li>';
-                return;
-            }
-
-            btnIA.disabled = true;
-            btnIA.innerHTML = '<div class="spinner-ring" style="width:14px; height:14px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:8px; margin-bottom:0; animation: spin 1s linear infinite;"></div> Processando...';
-
-            listaElogios.innerHTML = '<li style="list-style: none;"><div class="spinner-ring" style="width:14px; height:14px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:8px; margin-bottom:0;"></div> Lendo e interpretando relatos...</li>';
-            listaCriticas.innerHTML = '<li style="list-style: none;"><div class="spinner-ring" style="width:14px; height:14px; border-width:2px; display:inline-block; vertical-align:middle; margin-right:8px; margin-bottom:0;"></div> Lendo e interpretando relatos...</li>';
-
-            // Prepara os dados para enviar à API
-            const payload = {
-                action: 'ia_insights',
-                comentarios: comentariosParaIAGlobal
-            };
-
-            // Comunicação via API (POST)
-            const token = localStorage.getItem('token_nps');
-            fetch(`${API_URL}?token=${token}`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8' // <--- ADICIONE ESTA LINHA PARA EVITAR BLOQUEIO CORS
-                },
-                body: JSON.stringify(payload)
-            })
-                .then(res => res.json())
-                .then(respostaIA => {
-                    listaElogios.innerHTML = "";
-                    listaCriticas.innerHTML = "";
-                    btnIA.innerHTML = '<i class="ph-fill ph-check-circle"></i> Análise Concluída';
-
-                    if (respostaIA.elogios && respostaIA.elogios.length > 0) {
-                        respostaIA.elogios.forEach(item => listaElogios.innerHTML += `<li>${item}</li>`);
-                    } else {
-                        listaElogios.innerHTML = '<li style="list-style:none;">Sem padrões de elogios neste período.</li>';
-                    }
-
-                    if (respostaIA.criticas && respostaIA.criticas.length > 0) {
-                        respostaIA.criticas.forEach(item => listaCriticas.innerHTML += `<li>${item}</li>`);
-                    } else {
-                        listaCriticas.innerHTML = '<li style="list-style:none;">Sem padrões críticos neste período.</li>';
-                    }
-                })
-                .catch(erro => {
-                    btnIA.disabled = false;
-                    btnIA.innerHTML = '<i class="ph-fill ph-warning"></i> Falha. Tentar Novamente';
-                    listaElogios.innerHTML = '<li style="list-style:none; color: var(--warning);">Falha ao contatar o motor de IA.</li>';
-                    listaCriticas.innerHTML = '<li style="list-style:none; color: var(--warning);">Falha ao contatar o motor de IA.</li>';
-                });
-        }
-
-        window.onload = function () {
-
-            // Gráfico NPS 
-            chartNPS = new Chart(document.getElementById('chartNPS'), {
+// ==========================================
+// 3. RENDERIZAÇÃO DE GRÁFICOS (COM ANIMAÇÃO)
+// ==========================================
+function renderizarGraficos(p, n, d, labelsLinha, dadosLinha) {
+    // 1. Gráfico de Rosca
+    const ctxDist = document.getElementById('chartDistribuicao');
+    if (ctxDist) {
+        if (chartDistribuicao) {
+            chartDistribuicao.data.datasets[0].data = [p, n, d];
+            chartDistribuicao.update();
+        } else {
+            chartDistribuicao = new Chart(ctxDist, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Promotores', 'Passivos', 'Detratores'],
-                    datasets: [{ data: [0, 1, 0], backgroundColor: ['#1e293b', '#1e293b', '#1e293b'], borderWidth: 0 }]
+                    labels: ['Promotores', 'Neutros', 'Detratores'],
+                    datasets: [{
+                        data: [0, 0, 0], // Inicia zerado para forçar o efeito visual crescendo
+                        backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                        borderWidth: 0
+                    }]
                 },
-                options: { responsive: true, maintainAspectRatio: false, cutout: '75%', plugins: { legend: { position: 'bottom', labels: { usePointStyle: true, color: '#94a3b8' } } } }
+                options: {
+                    responsive: true, maintainAspectRatio: false, cutout: '75%',
+                    plugins: { legend: { position: 'bottom' } },
+                    animation: { duration: 1500, easing: 'easeOutQuart' }
+                }
             });
+            // O timeout garante a montagem prévia; .update engatilha a animação pra valer.
+            setTimeout(() => {
+                chartDistribuicao.data.datasets[0].data = [p, n, d];
+                chartDistribuicao.update();
+            }, 100);
+        }
+    }
 
-            // Gráfico Evolução (PANORÂMICO)
-            chartEvolucao = new Chart(document.getElementById('chartEvolucao'), {
+    // 2. Gráfico de Linha
+    const ctxEvolucao = document.getElementById('chartEvolucao');
+    if (ctxEvolucao) {
+        if (chartEvolucao) {
+            chartEvolucao.data.labels = labelsLinha.length > 0 ? labelsLinha : ['Sem dados'];
+            chartEvolucao.data.datasets[0].data = dadosLinha.length > 0 ? dadosLinha : [0];
+            chartEvolucao.update();
+        } else {
+            const labelsData = labelsLinha.length > 0 ? labelsLinha : ['Sem dados'];
+            const actualData = dadosLinha.length > 0 ? dadosLinha : [0];
+
+            chartEvolucao = new Chart(ctxEvolucao, {
                 type: 'line',
                 data: {
-                    labels: ['Carregando Mapeamento...'],
-                    datasets: [
-                        { label: 'FAV', data: [0], borderColor: '#3b82f6', tension: 0.3, fill: true, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderWidth: 3 },
-                        { label: 'CER IV', data: [0], borderColor: '#8b5cf6', tension: 0.3, fill: true, backgroundColor: 'rgba(139, 92, 246, 0.1)', borderWidth: 3 }
-                    ]
+                    labels: labelsData,
+                    datasets: [{
+                        label: 'Vol. Pesquisas',
+                        data: actualData.map(() => 0), // Inicia na linha do zero
+                        borderColor: '#3b82f6', backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        borderWidth: 3, tension: 0.4, fill: true
+                    }]
                 },
                 options: {
                     responsive: true, maintainAspectRatio: false,
-                    plugins: { legend: { display: true, position: 'top', align: 'end', labels: { color: '#f8fafc', usePointStyle: true, boxWidth: 8 } } },
-                    scales: { x: { grid: { display: false } }, y: { border: { display: false }, grid: { color: 'rgba(255, 255, 255, 0.05)' } } }
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } },
+                    animation: { duration: 1500, easing: 'easeOutQuart' }
                 }
             });
 
             setTimeout(() => {
-                // Ao carregar a página, verifica se já existe um token salvo
-                const tokenSalvo = localStorage.getItem('token_nps');
-                if (tokenSalvo) {
-                    carregarDados(null, null, tokenSalvo);
-                } else {
-                    document.getElementById('tela-autenticacao').style.display = 'flex';
-                }
-            }, 500);
+                chartEvolucao.data.datasets[0].data = actualData;
+                chartEvolucao.update();
+            }, 100);
+        }
+    }
+}
+
+// ==========================================
+// 4. MÓDULO DE INTELIGÊNCIA ARTIFICIAL
+// ==========================================
+async function gerarInsightsIA() {
+    if (comentariosAtuaisParaIA.length === 0) {
+        alert("Não há avaliações de texto suficientes neste período para gerar a análise.");
+        return;
+    }
+
+    const btn = document.getElementById('btn-gerar-ia');
+    btn.innerHTML = '<div class="spinner" style="width:16px; height:16px; margin:0; border-width:2px;"></div> Processando IA...';
+    btn.disabled = true;
+
+    try {
+        const tokenAtivo = localStorage.getItem('token_nps');
+        // A CORREÇÃO DA IA ESTÁ AQUI (Token na URL da requisição POST)
+        const fetchUrlComToken = `${API_URL}?action=ia_insights&token=${encodeURIComponent(tokenAtivo)}`;
+
+        const payload = {
+            action: 'ia_insights',
+            comentarios: comentariosAtuaisParaIA
         };
 
-        // --- LÓGICA DE AUTENTICAÇÃO ---
-        function validarEEntrar() {
-            const tokenDigitado = document.getElementById('input-token').value;
-            if (!tokenDigitado) {
-                mostrarErro("Por favor, digite o token.");
-                return;
-            }
-            document.getElementById('msg-erro').style.display = 'none';
-            document.getElementById('btn-login').innerText = 'Validando...';
-            carregarDados(null, null, tokenDigitado);
-        }
+        const resp = await fetch(fetchUrlComToken, {
+            method: 'POST',
+            body: JSON.stringify(payload)
+        });
 
-        function mostrarErro(mensagem) {
-            const divErro = document.getElementById('msg-erro');
-            divErro.innerText = mensagem;
-            divErro.style.display = 'block';
-            document.getElementById('btn-login').innerText = 'Acessar Painel';
-        }
+        const dadosIA = await resp.json();
 
-        function limparSessao() {
-            localStorage.removeItem('token_nps');
-            document.getElementById('tela-autenticacao').style.display = 'flex';
-            document.getElementById('conteudo-dashboard').style.display = 'none';
-            document.getElementById('btn-login').innerText = 'Acessar Painel';
-        }
+        const listaElogios = document.getElementById('lista-elogios');
+        const listaCriticas = document.getElementById('lista-criticas');
 
-        function sairDoPainel() {
-            limparSessao();
-            document.getElementById('input-token').value = '';
-        }
+        listaElogios.innerHTML = '';
+        listaCriticas.innerHTML = '';
+
+        (dadosIA.elogios || ["Sem elogios detectados."]).forEach(t => listaElogios.innerHTML += `<li>${t}</li>`);
+        (dadosIA.criticas || ["Nenhuma crítica destacada."]).forEach(t => listaCriticas.innerHTML += `<li>${t}</li>`);
+
+    } catch (e) {
+        alert("Erro ao conectar com a Inteligência Artificial. Verifique sua conexão.");
+    } finally {
+        btn.innerHTML = '<i class="ph-fill ph-magic-wand"></i> Gerar Auditoria IA';
+        btn.disabled = false;
+    }
+}
